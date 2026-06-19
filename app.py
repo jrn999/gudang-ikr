@@ -27,13 +27,12 @@ for f in semua_file:
     if "MATERIAL IKR" in f and f.endswith('.xlsx'):
         EXCEL_FILE = f
 
-# --- DEKLARASI SESSION STATE (DATABASE LIVE STREAMLIT) ---
+# --- DEKLARASI SESSION STATE ---
 if 'log_scan_harian' not in st.session_state:
     st.session_state.log_scan_harian = pd.DataFrame(
         columns=['Waktu Scan', 'Nama Teknisi', 'Serial Number (SN)', 'Nama Barang', 'Kabel Precon', 'No WO / Keterangan']
     )
 
-# DATABASE BARU UNTUK LAPORAN PENGGUNAAN SORE HARI
 if 'log_penggunaan_sore' not in st.session_state:
     st.session_state.log_penggunaan_sore = pd.DataFrame(
         columns=['Waktu Input', 'Nama Teknisi', 'No WO / Keterangan', 'Jenis Material', 'Detail Material / SN', 'Status Pemasangan', 'Keterangan Tambahan']
@@ -41,6 +40,10 @@ if 'log_penggunaan_sore' not in st.session_state:
 
 if 'pesan_sukses' not in st.session_state:
     st.session_state.pesan_sukses = ""
+    
+# SESSION STATE BARU UNTUK MENAMPUNG PESAN ERROR DOUBLE SCAN
+if 'pesan_error' not in st.session_state:
+    st.session_state.pesan_error = ""
 
 # Fungsi loading data master SN (CSV)
 @st.cache_data
@@ -88,22 +91,37 @@ if not DAFTAR_KABEL_OTOMATIS:
 
 DAFTAR_TEKNISI = ["PUTRA-SONY", "RIYAN-RIYADI", "NADI-PARI", "ARIF-YASRIL", "NOVANS-GOBY", "PERI-ROBIN", "TEDI-DODI", "REFKY-DODI", "RAHMAN-AGUS", "IDDO-NAUFAL"]
 
+# --- AUTOMATIC CALLBACK SCAN SN (DENGAN PROTEKSI ANTI-DOUBLE) ---
 def proses_scan_sn():
     sn_value = st.session_state.scan_sn_key.strip()
     if sn_value:
+        # 1. 🛡️ PROTEKSI ANTI-DOUBLE SCAN
+        if not st.session_state.log_scan_harian.empty:
+            # Ambil semua SN yang sudah terdata di tabel harian (ubah ke huruf kecil semua)
+            sn_terdata = st.session_state.log_scan_harian['Serial Number (SN)'].astype(str).str.lower().values
+            if sn_value.lower() in sn_terdata:
+                # Jika SN sudah ada, tembak Error dan TOLAK masuk tabel!
+                st.session_state.pesan_error = f"🚨 SCAN DITOLAK! SN '{sn_value}' sudah pernah di-scan sebelumnya hari ini!"
+                st.session_state.pesan_sukses = ""
+                st.session_state.scan_sn_key = "" # Langsung kosongkan kotak biar bisa scan yang lain
+                return
+        
+        # 2. Jika lolos cek double, lanjut validasi ke master SN
         pencarian = df_master[df_master['SN'].astype(str).str.lower() == sn_value.lower()]
         nama_barang = pencarian.iloc[0].get('Nama_Barang', 'Device Terdaftar') if not pencarian.empty else "ONT/STB (Manual/Tidak di Master)"
         
+        waktu_sekarang = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         new_row = {
-            'Waktu Scan': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            'Waktu Scan': waktu_sekarang,
             'Nama Teknisi': st.session_state.tek_device, 'Serial Number (SN)': sn_value,
             'Nama Barang': nama_barang, 'Kabel Precon': "-", 'No WO / Keterangan': st.session_state.wo_device if st.session_state.wo_device else "-"
         }
         st.session_state.log_scan_harian = pd.concat([st.session_state.log_scan_harian, pd.DataFrame([new_row])], ignore_index=True)
-        st.session_state.pesan_sukses = f"🎉 BERHASIL: SN '{sn_value}' tersimpan!"
-        st.session_state.scan_sn_key = ""
+        st.session_state.pesan_sukses = f"🎉 BERHASIL: SN '{sn_value}' ({nama_barang}) tersimpan!"
+        st.session_state.pesan_error = "" # Hapus pesan error lama jika ada
+        st.session_state.scan_sn_key = "" # Kosongkan kotak input
 
-# --- SIDEBAR NAVIGASI MENGGUNAKAN LOGO & ICON ---
+# --- SIDEBAR NAVIGASI ---
 st.sidebar.markdown("### 📊 NAVIGATION MENU")
 menu = st.sidebar.radio(
     "PILIH HALAMAN APLIKASI:", 
@@ -118,9 +136,14 @@ menu = st.sidebar.radio(
 # ==================== MENU 1: SCAN & INPUT PAGI ====================
 if menu == "✍️ Scan & Input Pagi (Pengeluaran)":
     st.subheader("✍️ Pendataan Pengeluaran Material Harian (Pagi/Siang)")
+    
+    # Memunculkan Notifikasi Pop-Up Status Sukses / Gagal
     if st.session_state.pesan_sukses:
         st.success(st.session_state.pesan_sukses)
         st.session_state.pesan_sukses = ""
+    if st.session_state.pesan_error:
+        st.error(st.session_state.pesan_error)
+        st.session_state.pesan_error = ""
         
     col_kabel, col_sn = st.columns(2)
     with col_kabel:
@@ -150,10 +173,14 @@ if menu == "✍️ Scan & Input Pagi (Pengeluaran)":
     if not st.session_state.log_scan_harian.empty:
         st.dataframe(st.session_state.log_scan_harian, use_container_width=True)
         st.download_button(label="📥 Download Log Pengeluaran Pagi (.CSV)", data=st.session_state.log_scan_harian.to_csv(index=False).encode('utf-8'), file_name=f"PENGELUARAN_PAGI_{datetime.now().strftime('%Y%m%d')}.csv", mime="text/csv", use_container_width=True)
+        
+        if st.button("🗑️ Kosongkan Tabel Pagi (Reset)"):
+            st.session_state.log_scan_harian = pd.DataFrame(columns=['Waktu Scan', 'Nama Teknisi', 'Serial Number (SN)', 'Nama Barang', 'Kabel Precon', 'No WO / Keterangan'])
+            st.rerun()
     else:
         st.info("Belum ada data barang keluar pagi ini.")
 
-# ==================== 🛠️ MENU BARU: LAPORAN PENGGUNAAN SORE ====================
+# ==================== MENU 2: LAPORAN PENGGUNAAN SORE ====================
 elif menu == "📝 Laporan Penggunaan Sore (Hasil Lapangan)":
     st.subheader("📝 Laporan Hasil Kerja Lapangan Sore Hari")
     st.write("Gunakan form di bawah ini setiap sore untuk mendata apakah material yang dibawa teknisi berhasil diinstal atau tidak.")
@@ -182,13 +209,8 @@ elif menu == "📝 Laporan Penggunaan Sore (Hasil Lapangan)":
             else:
                 waktu_sekarang = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 new_row_sore = {
-                    'Waktu Input': waktu_sekarang,
-                    'Nama Teknisi': tek_sore,
-                    'No WO / Keterangan': wo_sore if wo_sore else "-",
-                    'Jenis Material': jenis_mat,
-                    'Detail Material / SN': detail_mat.strip(),
-                    'Status Pemasangan': status_sore,
-                    'Keterangan Tambahan': ket_sore if ket_sore else "-"
+                    'Waktu Input': waktu_sekarang, 'Nama Teknisi': tek_sore, 'No WO / Keterangan': wo_sore if wo_sore else "-",
+                    'Jenis Material': jenis_mat, 'Detail Material / SN': detail_mat.strip(), 'Status Pemasangan': status_sore, 'Keterangan Tambahan': ket_sore if ket_sore else "-"
                 }
                 st.session_state.log_penggunaan_sore = pd.concat([st.session_state.log_penggunaan_sore, pd.DataFrame([new_row_sore])], ignore_index=True)
                 st.success(f"✅ Berhasil mencatat laporan sore untuk tim {tek_sore}!")
@@ -197,18 +219,8 @@ elif menu == "📝 Laporan Penggunaan Sore (Hasil Lapangan)":
     st.markdown("#### 📋 Rekap Tabel Laporan Penggunaan Sore Hari")
     if not st.session_state.log_penggunaan_sore.empty:
         st.dataframe(st.session_state.log_penggunaan_sore, use_container_width=True)
+        st.download_button(label="📥 Download File Excel Laporan Sore (.CSV)", data=st.session_state.log_penggunaan_sore.to_csv(index=False).encode('utf-8'), file_name=f"LAPORAN_PENGGUNAAN_SORE_{datetime.now().strftime('%Y%m%d')}.csv", mime="text/csv", use_container_width=True)
         
-        # Tombol Download Khusus Data Sore
-        csv_sore_data = st.session_state.log_penggunaan_sore.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="📥 Download File Excel Laporan Sore (.CSV)", 
-            data=csv_sore_data, 
-            file_name=f"LAPORAN_PENGGUNAAN_SORE_{datetime.now().strftime('%Y%m%d')}.csv", 
-            mime="text/csv", 
-            use_container_width=True
-        )
-        
-        # Tombol Clear Data Sore
         if st.button("🗑️ Reset / Kosongkan Laporan Sore"):
             st.session_state.log_penggunaan_sore = pd.DataFrame(columns=['Waktu Input', 'Nama Teknisi', 'No WO / Keterangan', 'Jenis Material', 'Detail Material / SN', 'Status Pemasangan', 'Keterangan Tambahan'])
             st.rerun()
