@@ -10,10 +10,9 @@ st.set_page_config(
     page_icon="⚡"
 )
 
-# --- CONFIG NAMA FILE CSV (SESUAIKAN DENGAN DI GITHUB) ---
+# --- SETTING NAMA FILE (WAJIB SAMA PERSIS DENGAN DI GITHUB) ---
+EXCEL_FILE = "MATERIAL IKR [ KEBUTUHAN WO HARIAN ].xlsx"
 MASTER_SN_FILE = "Untitled spreadsheet - 1. MASTER_SN.csv"
-CSV_DEVICE = "MATERIAL IKR [ KEBUTUHAN WO HARIAN ].xlsx - Stock Device.csv"
-CSV_PRECON = "MATERIAL IKR [ KEBUTUHAN WO HARIAN ].xlsx - Stock PRECON.csv"
 
 # --- DEKLARASI SESSION STATE ---
 if 'log_scan_harian' not in st.session_state:
@@ -23,12 +22,24 @@ if 'log_scan_harian' not in st.session_state:
 if 'pesan_sukses' not in st.session_state:
     st.session_state.pesan_sukses = ""
 
-# Fungsi loading CSV Master SN
+# Fungsi loading data master SN (CSV)
 @st.cache_data
-def load_csv_generic(file_name):
-    if os.path.exists(file_name):
+def load_master_sn():
+    if os.path.exists(MASTER_SN_FILE):
         try:
-            df = pd.read_csv(file_name)
+            df = pd.read_csv(MASTER_SN_FILE)
+            df.columns = df.columns.str.strip()
+            return df
+        except Exception as e:
+            return pd.DataFrame(columns=['SN', 'Nama_Barang', 'Kode_Gudang', 'Deskripsi'])
+    return pd.DataFrame(columns=['SN', 'Nama_Barang', 'Kode_Gudang', 'Deskripsi'])
+
+# Fungsi loading sheet dari Excel Asli (.xlsx)
+@st.cache_data
+def load_excel_sheet(sheet_name):
+    if os.path.exists(EXCEL_FILE):
+        try:
+            df = pd.read_excel(EXCEL_FILE, sheet_name=sheet_name, engine='openpyxl')
             df.columns = df.columns.str.strip()
             return df
         except Exception as e:
@@ -36,14 +47,11 @@ def load_csv_generic(file_name):
     return None
 
 # --- LOAD DATA ---
-df_master = load_csv_generic(MASTER_SN_FILE)
-if df_master is None:
-    df_master = pd.DataFrame(columns=['SN', 'Nama_Barang', 'Kode_Gudang', 'Deskripsi'])
+df_master = load_master_sn()
+df_device = load_excel_sheet("Stock Device")
+df_precon = load_excel_sheet("Stock PRECON")
 
-df_device = load_csv_generic(CSV_DEVICE)
-df_precon = load_csv_generic(CSV_PRECON)
-
-# --- PROSES MEMBUAT DAFTAR KABEL OTOMATIS DARI CSV ---
+# --- PROSES MEMBUAT DAFTAR KABEL OTOMATIS DARI EXCEL ---
 DAFTAR_KABEL_OTOMATIS = []
 if df_precon is not None and 'Description' in df_precon.columns:
     list_kabel = df_precon['Description'].dropna().astype(str).tolist()
@@ -58,14 +66,14 @@ if not DAFTAR_KABEL_OTOMATIS:
         "DTFIBER - CABLE PRECON SC/UPC-SC/APC - 300MTR"
     ]
 
-# Daftar 10 Tim Teknisi
+# Daftar 10 Tim Teknisi Sesuai Sheet Excel Kamu
 DAFTAR_TEKNISI = [
     "PUTRA-SONY", "RIYAN-RIYADI", "NADI-PARI", "ARIF-YASRIL", 
     "NOVANS-GOBY", "PERI-ROBIN", "TEDI-DODI", "REFKY-DODI", 
     "RAHMAN-AGUS", "IDDO-NAUFAL"
 ]
 
-# --- AUTOMATIC CALLBACK SCAN ---
+# --- AUTOMATIC CALLBACK SCAN SN ---
 def proses_scan_sn():
     sn_value = st.session_state.scan_sn_key.strip()
     if sn_value:
@@ -88,32 +96,30 @@ def proses_scan_sn():
         st.session_state.pesan_sukses = f"🎉 BERHASIL: SN '{sn_value}' ({nama_barang}) tersimpan!"
         st.session_state.scan_sn_key = ""
 
-# --- SIDEBAR ---
+# --- SIDEBAR NAVIGASI ---
 st.sidebar.title("🛠️ Logistik IKR Cloud")
 st.sidebar.markdown("---")
 menu = st.sidebar.radio(
     "PILIH MENU APLIKASI:",
-    ["📊 Dashboard Utama", "✍️ Input & Scan Harian Teknisi", "🔍 Lihat & Cari Master SN", "📦 Stok Gudang", "👨‍🔧 Monitoring CSV Teknisi"]
+    ["📊 Dashboard Utama", "✍️ Input & Scan Harian Teknisi", "🔍 Lihat & Cari Master SN", "📦 Stok Gudang", "👨‍🔧 Histori Excel Teknisi"]
 )
 
-# ==================== DASHBOARD ====================
+# ==================== 1. DASHBOARD UTAMA ====================
 if menu == "📊 Dashboard Utama":
     st.title("📊 Dashboard Utama Gudang")
-    st.markdown("### 📌 Status Sinkronisasi File CSV di GitHub")
+    st.markdown("### 📌 Status Sinkronisasi File Master di GitHub")
     
-    # Cek status file satu per satu
-    files_to_check = {
-        "Master SN": MASTER_SN_FILE,
-        "Stok Device (CSV)": CSV_DEVICE,
-        "Stok Precon (CSV)": CSV_PRECON
-    }
-    for name, fpath in files_to_check.items():
-        if os.path.exists(fpath):
-            st.success(f"✅ {name}: Terkoneksi ({fpath})")
-        else:
-            st.error(f"❌ {name}: File '{fpath}' TIDAK DITEMUKAN di GitHub!")
+    if os.path.exists(MASTER_SN_FILE):
+        st.success(f"✅ Master SN (CSV): Terkoneksi Sempurna ({MASTER_SN_FILE})")
+    else:
+        st.error(f"❌ Master SN (CSV): File '{MASTER_SN_FILE}' TIDAK DITEMUKAN!")
+        
+    if os.path.exists(EXCEL_FILE):
+        st.success(f"✅ File Excel Utama (.xlsx): Terkoneksi Sempurna ({EXCEL_FILE})")
+    else:
+        st.error(f"❌ File Excel Utama (.xlsx): File '{EXCEL_FILE}' TIDAK DITEMUKAN! Pastikan kamu sudah mengupload file Excel asli ke GitHub dengan nama tersebut.")
 
-# ==================== INPUT HARIAN ====================
+# ==================== 2. INPUT HARIAN ====================
 elif menu == "✍️ Input & Scan Harian Teknisi":
     st.title("✍️ Pendataan Material Harian Teknisi")
     if st.session_state.pesan_sukses:
@@ -153,30 +159,28 @@ elif menu == "✍️ Input & Scan Harian Teknisi":
     else:
         st.info("Belum ada data material yang di-input atau di-scan hari ini.")
 
-# ==================== MASTER SN ====================
+# ==================== 3. MASTER SN ====================
 elif menu == "🔍 Lihat & Cari Master SN":
     st.title("🔍 Pusat Data Master SN")
     st.dataframe(df_master, use_container_width=True)
 
-# ==================== STOK GUDANG ====================
+# ==================== 4. STOK GUDANG ====================
 elif menu == "📦 Stok Gudang":
-    st.title("📦 Data Stok Gudang (Dari CSV)")
+    st.title("📦 Data Stok Gudang (Langsung dari Excel .xlsx)")
     t1, t2 = st.tabs(["📟 Device", "🧵 Kabel PRECON"])
     with t1:
         if df_device is not None: st.dataframe(df_device, use_container_width=True)
-        else: st.info(f"File '{CSV_DEVICE}' tidak ditemukan di GitHub.")
+        else: st.info(f"File Excel '{EXCEL_FILE}' tidak ditemukan di GitHub atau Sheet 'Stock Device' kosong.")
     with t2:
         if df_precon is not None: st.dataframe(df_precon, use_container_width=True)
-        else: st.info(f"File '{CSV_PRECON}' tidak ditemukan di GitHub.")
+        else: st.info(f"File Excel '{EXCEL_FILE}' tidak ditemukan di GitHub atau Sheet 'Stock PRECON' kosong.")
 
-# ==================== MONITORING TEKNISI ====================
-elif menu == "👨‍🔧 Monitoring CSV Teknisi":
-    st.title("👨‍🔧 Histori Penggunaan CSV Teknisi")
+# ==================== 5. HISTORI EXCEL ASLI TEKNISI ====================
+elif menu == "👨‍🔧 Histori Excel Teknisi":
+    st.title("👨‍🔧 Histori Sheet Penggunaan Teknisi (Langsung dari Excel .xlsx)")
     pilihan = st.selectbox("Pilih Nama Tim:", DAFTAR_TEKNISI)
-    # Mencari file CSV dengan format nama: "MATERIAL IKR [ KEBUTUHAN WO HARIAN ].xlsx - NAMA-TEKNISI.csv"
-    expected_csv_name = f"MATERIAL IKR [ KEBUTUHAN WO HARIAN ].xlsx - {pilihan}.csv"
-    df_tek = load_csv_generic(expected_csv_name)
+    df_tek = load_excel_sheet(pilihan)
     if df_tek is not None: 
         st.dataframe(df_tek.dropna(how='all'), use_container_width=True)
     else: 
-        st.info(f"File harian untuk teknisi '{expected_csv_name}' tidak ditemukan di GitHub.")
+        st.info(f"Sheet bernama '{pilihan}' tidak ditemukan di dalam file Excel '{EXCEL_FILE}'.")
