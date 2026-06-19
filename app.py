@@ -1,30 +1,34 @@
 import streamlit as st
 import pandas as pd
 import os
+from datetime import datetime
 
 # Konfigurasi halaman utama
 st.set_page_config(
-    page_title="Manajemen Material & SN IKR", 
+    page_title="Sistem Logistik IKR Metech", 
     layout="wide", 
     page_icon="⚡"
 )
 
-# NAMA FILE (WAJIB SAMA PERSIS DENGAN YANG DI UPLOAD KE GITHUB)
+# NAMA FILE DI GITHUB
 EXCEL_FILE = "MATERIAL IKR [ KEBUTUHAN WO HARIAN ].xlsx"
 MASTER_SN_FILE = "Untitled spreadsheet - 1. MASTER_SN.csv"
+
+# --- DEKLARASI SESSION STATE (Untuk Menyimpan Hasil Scan Sementara) ---
+if 'log_scan_harian' not in st.session_state:
+    st.session_state.log_scan_harian = pd.DataFrame(
+        columns=['Waktu Scan', 'Nama Teknisi', 'Serial Number (SN)', 'Nama Barang', 'Kabel Precon', 'No WO / Keterangan']
+    )
 
 # Fungsi loading data master SN
 @st.cache_data
 def load_master_sn():
     if os.path.exists(MASTER_SN_FILE):
         try:
-            # Membaca file CSV Master SN
             df = pd.read_csv(MASTER_SN_FILE)
-            # Bersihkan spasi gaib di nama kolom
             df.columns = df.columns.str.strip()
             return df
         except Exception as e:
-            st.error(f"❌ Gagal membaca file CSV Master SN: {e}")
             return pd.DataFrame(columns=['SN', 'Nama_Barang', 'Kode_Gudang', 'Deskripsi'])
     return pd.DataFrame(columns=['SN', 'Nama_Barang', 'Kode_Gudang', 'Deskripsi'])
 
@@ -44,76 +48,137 @@ df_master = load_master_sn()
 df_device = load_excel_sheet("Stock Device")
 df_precon = load_excel_sheet("Stock PRECON")
 
+# Daftar 10 Tim Teknisi Sesuai Sheet Excel Kamu
+DAFTAR_TEKNISI = [
+    "PUTRA-SONY", "RIYAN-RIYADI", "NADI-PARI", "ARIF-YASRIL", 
+    "NOVANS-GOBY", "PERI-ROBIN", "TEDI-DODI", "REFKY-DODI", 
+    "RAHMAN-AGUS", "IDDO-NAUFAL"
+]
+
 # --- SIDEBAR NAVIGASI ---
-st.sidebar.title("Sistem Kontrol IKR")
+st.sidebar.title("🛠️ Logistik IKR Cloud")
 st.sidebar.markdown("---")
 menu = st.sidebar.radio(
     "PILIH MENU APLIKASI:",
-    ["📊 Dashboard Utama", "🔍 Scan & Lihat Master SN", "📦 Stok Gudang", "👨‍🔧 Data Harian Teknisi"]
+    [
+        "📊 Dashboard Utama", 
+        "✍️ Input & Scan Harian Teknisi", # Ini Fitur Utama Pendataan Kamu!
+        "🔍 Lihat & Cari Master SN", 
+        "📦 Stok Gudang", 
+        "👨‍🔧 Monitoring Sheet Teknisi"
+    ]
 )
 
 # ==================== 1. DASHBOARD UTAMA ====================
 if menu == "📊 Dashboard Utama":
-    st.title("📊 Dashboard Utama")
-    
+    st.title("📊 Dashboard Utama Gudang")
     total_sn = len(df_master)
+    total_input_hari_ini = len(st.session_state.log_scan_harian)
     
     col1, col2 = st.columns(2)
     with col1:
-        st.metric(label="Total Master SN Terbaca", value=f"{int(total_sn)} Item")
+        st.metric(label="Total Master SN Terdaftar", value=f"{int(total_sn)} Item")
+    with col2:
+        st.metric(label="Material Terdata Hari Ini (Belum Diclone)", value=f"{int(total_input_hari_ini)} Item", delta="Live")
         
-    st.markdown("### 📌 Status Sinkronisasi File di GitHub")
+    st.markdown("### 📌 Status File Gudang di GitHub")
     if os.path.exists(MASTER_SN_FILE):
         st.success(f"✅ Master SN Terkoneksi Sempurna ({MASTER_SN_FILE})")
     else:
-        st.error(f"❌ File '{MASTER_SN_FILE}' tidak ditemukan! Periksa kembali nama file yang kamu upload di GitHub.")
+        st.error(f"❌ File '{MASTER_SN_FILE}' tidak ditemukan di GitHub!")
 
-# ==================== 2. SCAN & LIHAT MASTER SN ====================
-elif menu == "🔍 Scan & Lihat Master SN":
-    st.title("🔍 Pusat Data & Validasi Master SN")
+# ==================== 2. INPUT & SCAN HARIAN TEKNISI ====================
+elif menu == "✍️ Input & Scan Harian Teknisi":
+    st.title("✍️ Pendataan & Scan Material Harian Teknisi")
+    st.write("Gunakan halaman ini untuk mencatat pengeluaran device (SN) dan kabel precon yang dibawa teknisi.")
     
-    # Bagian 1: Fitur Cari/Scan
-    st.subheader("⚙️ Scan / Cari SN Spesifik")
-    input_sn = st.text_input("👉 SCAN BARCODE ATAU KETIK NOMOR SN:", placeholder="Contoh: ZTEGDD2B1636...").strip()
-    
-    if input_sn:
-        if 'SN' in df_master.columns:
-            hasil = df_master[df_master['SN'].astype(str).str.lower() == input_sn.lower()]
-            if not hasil.empty:
-                st.success("🎉 NOMOR SN TERDAFTAR DI MASTER!")
-                st.dataframe(hasil, use_container_width=True)
-            else:
-                st.error(f"⚠️ Nomor SN '{input_sn}' TIDAK DITEMUKAN!")
-        else:
-            st.error("❌ Kolom bernama 'SN' tidak ditemukan di file CSV kamu.")
+    # Form Input Gabungan
+    with st.expander("🚀 BUKA FORM SCAN INPUT BARANG", expanded=True):
+        c1, c2 = st.columns(2)
+        with c1:
+            pilihan_tek = st.selectbox("1. Pilih Nama Tim / Teknisi:", DAFTAR_TEKNISI)
+            input_wo = st.text_input("2. Nomor WO / Keterangan:", placeholder="Contoh: WO-12345 atau Pasang Baru")
+            pilihan_kabel = st.selectbox("3. Kabel Precon Yang Dibawa:", ["Tidak Bawa Kabel", "75 MTR", "125 MTR", "150 MTR", "1 Rol Keluar"])
+        
+        with c2:
+            st.markdown("**4. Bagian Scan Serial Number (Device):**")
+            scan_sn = st.text_input("👉 ARAHKAN KURSOR KE SINI LALU SCAN / KETIK SN:", placeholder="Ketik atau scan barcode SN...").strip()
+            
+            nama_barang_terdeteksi = "Bukan Device (Hanya Kabel)"
+            if scan_sn:
+                # Validasi otomatis ke data master SN
+                pencarian = df_master[df_master['SN'].astype(str).str.lower() == scan_sn.lower()]
+                if not pencarian.empty:
+                    nama_barang_terdeteksi = pencarian.iloc[0].get('Nama_Barang', 'Device Terdaftar')
+                    st.success(f"🎯 SN Terdeteksi Merek: **{nama_barang_terdeteksi}**")
+                else:
+                    st.warning("⚠️ SN tidak ditemukan di Master, tapi tetap bisa kamu input manual.")
+                    nama_barang_terdeteksi = st.text_input("Masukkan Nama/Jenis Barang Manual:", value="ONT/STB")
 
+        st.markdown("---")
+        tombol_simpan = st.button("➕ Simpan ke Log Hari Ini", use_container_width=True)
+        
+        if tombol_simpan:
+            waktu_sekarang = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            # Masukkan data ke tabel temporary
+            new_row = {
+                'Waktu Scan': waktu_sekarang,
+                'Nama Teknisi': pilihan_tek,
+                'Serial Number (SN)': scan_sn if scan_sn else "-",
+                'Nama Barang': nama_barang_terdeteksi,
+                'Kabel Precon': pilihan_kabel,
+                'No WO / Keterangan': input_wo if input_wo else "-"
+            }
+            st.session_state.log_scan_harian = pd.concat([st.session_state.log_scan_harian, pd.DataFrame([new_row])], ignore_index=True)
+            st.toast(f"Berhasil mencatat material untuk {pilihan_tek}!", icon="✅")
+
+    # Tampilkan Tabel Live Hasil Pendataan Hari Ini
     st.markdown("---")
+    st.subheader("📋 Data Pengeluaran Material Hari Ini")
+    st.write("Tabel di bawah ini menampung semua hasil scan kamu secara live:")
     
-    # Bagian 2: Menampilkan Seluruh Isi Tabel CSV
-    st.subheader("📋 Semua Daftar Master SN Terdaftar")
-    st.write(f"Menampilkan total **{len(df_master)}** baris data yang ada di dalam file CSV kamu:")
-    
-    if not df_master.empty:
-        st.dataframe(df_master, use_container_width=True)
+    if not st.session_state.log_scan_harian.empty:
+        st.dataframe(st.session_state.log_scan_harian, use_container_width=True)
+        
+        # Tombol Download Excel Instan
+        csv_data = st.session_state.log_scan_harian.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="📥 Download Data Scan Hari Ini (.CSV/Excel)",
+            data=csv_data,
+            file_name=f"LOG_IKR_{datetime.now().strftime('%Y%m%d')}.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
+        
+        # Tombol Reset Tabel
+        if st.button("🗑️ Kosongkan Tabel Hari Ini (Reset)"):
+            st.session_state.log_scan_harian = pd.DataFrame(columns=['Waktu Scan', 'Nama Teknisi', 'Serial Number (SN)', 'Nama Barang', 'Kabel Precon', 'No WO / Keterangan'])
+            st.rerun()
     else:
-        st.info("Tabel kosong karena file CSV belum terbaca. Pastikan status di Dashboard sudah berwarna hijau ya!")
+        st.info("Belum ada data material yang di-scan hari ini. Silakan isi form di atas untuk mendata.")
 
-# ==================== 3. STOK GUDANG ====================
+# ==================== 3. LIHAT & CARI MASTER SN ====================
+elif menu == "🔍 Lihat & Cari Master SN":
+    st.title("🔍 Pusat Data Master SN")
+    st.dataframe(df_master, use_container_width=True)
+
+# ==================== 4. STOK GUDANG ====================
 elif menu == "📦 Stok Gudang":
     st.title("📦 Data Stok Gudang")
     t1, t2 = st.tabs(["📟 Device", "🧵 Kabel PRECON"])
     with t1:
         if df_device is not None: st.dataframe(df_device, use_container_width=True)
-        else: st.info("File Excel harian belum di-upload ke GitHub.")
+        else: st.info("File Excel harian tidak terdeteksi di GitHub.")
     with t2:
         if df_precon is not None: st.dataframe(df_precon, use_container_width=True)
-        else: st.info("File Excel harian belum di-upload ke GitHub.")
+        else: st.info("File Excel harian tidak terdeteksi di GitHub.")
 
-# ==================== 4. DATA HARIAN TEKNISI ====================
-elif menu == "👨‍🔧 Data Harian Teknisi":
-    st.title("👨‍🔧 Data Teknisi")
-    daftar_teknisi = ["PUTRA-SONY", "RIYAN-RIYADI", "NADI-PARI", "ARIF-YASRIL"]
-    pilihan = st.selectbox("Pilih Tim:", daftar_teknisi)
+# ==================== 5. MONITORING SHEET TEKNISI ====================
+elif menu == "👨‍🔧 Monitoring Sheet Teknisi":
+    st.title("👨‍🔧 Histori Penggunaan Excel Asli Teknisi")
+    pilihan = st.selectbox("Pilih Nama Tim:", DAFTAR_TEKNISI)
     df_tek = load_excel_sheet(pilihan)
-    if df_tek is not None: st.dataframe(df_tek.dropna(how='all'), use_container_width=True)
-    else: st.info("Data sheet teknisi tidak ditemukan.")
+    if df_tek is not None: 
+        st.dataframe(df_tek.dropna(how='all'), use_container_width=True)
+    else: 
+        st.info("Data harian dari Excel utama belum di-upload ke GitHub.")
