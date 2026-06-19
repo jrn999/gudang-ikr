@@ -12,25 +12,9 @@ st.set_page_config(
 
 st.title("⚡ Sistem Logistik IKR Metech")
 
-# =========================================================
-# 🔍 FITUR DETEKTIF: MENAMPILKAN SEMUA FILE DI GITHUB KAMU
-# =========================================================
-st.markdown("### 🕵️‍♂️ Fitur Detektif: File yang Terbaca di GitHub Kamu")
-with st.expander("👉 KLIK DI SINI UNTUK LIHAT DAFTAR FILE KAMU", expanded=True):
-    semua_file = os.listdir('.')
-    # Filter hanya file excel dan csv biar gak pusing lihatnya
-    file_gudang = [f for f in semua_file if f.endswith('.xlsx') or f.endswith('.csv')]
-    
-    if file_gudang:
-        st.info("Berikut adalah nama-nama file asli yang ada di GitHub kamu saat ini. Tolong COPAS atau FOTOIN daftar ini ke saya ya:")
-        for nama_file in file_gudang:
-            st.markdown(f"- `{nama_file}`")
-    else:
-        st.warning("Waduh! Gak ada file Excel (.xlsx) atau CSV (.csv) sama sekali di GitHub kamu.")
+# --- DETEKSI FILE DI GITHUB (OTOMATIS) ---
+semua_file = os.listdir('.')
 
-st.markdown("---")
-
-# --- PROSES PEMBACAAN FILE (OTOMATIS MENCARI YANG COCOK) ---
 # Mencari file master SN secara otomatis
 MASTER_SN_FILE = "Untitled spreadsheet - 1. MASTER_SN.csv"
 for f in semua_file:
@@ -43,11 +27,18 @@ for f in semua_file:
     if "MATERIAL IKR" in f and f.endswith('.xlsx'):
         EXCEL_FILE = f
 
-# --- DEKLARASI SESSION STATE ---
+# --- DEKLARASI SESSION STATE (DATABASE LIVE STREAMLIT) ---
 if 'log_scan_harian' not in st.session_state:
     st.session_state.log_scan_harian = pd.DataFrame(
         columns=['Waktu Scan', 'Nama Teknisi', 'Serial Number (SN)', 'Nama Barang', 'Kabel Precon', 'No WO / Keterangan']
     )
+
+# DATABASE BARU UNTUK LAPORAN PENGGUNAAN SORE HARI
+if 'log_penggunaan_sore' not in st.session_state:
+    st.session_state.log_penggunaan_sore = pd.DataFrame(
+        columns=['Waktu Input', 'Nama Teknisi', 'No WO / Keterangan', 'Jenis Material', 'Detail Material / SN', 'Status Pemasangan', 'Keterangan Tambahan']
+    )
+
 if 'pesan_sukses' not in st.session_state:
     st.session_state.pesan_sukses = ""
 
@@ -112,18 +103,28 @@ def proses_scan_sn():
         st.session_state.pesan_sukses = f"🎉 BERHASIL: SN '{sn_value}' tersimpan!"
         st.session_state.scan_sn_key = ""
 
-# --- SIDEBAR NAVIGASI ---
-menu = st.sidebar.radio("PILIH MENU APLIKASI:", ["✍️ Input & Scan Harian Teknisi", "🔍 Lihat & Cari Master SN", "📦 Stok Gudang", "👨‍🔧 Histori Excel Teknisi"])
+# --- SIDEBAR NAVIGASI MENGGUNAKAN LOGO & ICON ---
+st.sidebar.markdown("### 📊 NAVIGATION MENU")
+menu = st.sidebar.radio(
+    "PILIH HALAMAN APLIKASI:", 
+    [
+        "✍️ Scan & Input Pagi (Pengeluaran)", 
+        "📝 Laporan Penggunaan Sore (Hasil Lapangan)", 
+        "📦 Lihat Stok Gudang", 
+        "👨‍🔧 Histori Sheet Teknisi"
+    ]
+)
 
-# ==================== MENU 1: INPUT HARIAN ====================
-if menu == "✍️ Input & Scan Harian Teknisi":
+# ==================== MENU 1: SCAN & INPUT PAGI ====================
+if menu == "✍️ Scan & Input Pagi (Pengeluaran)":
+    st.subheader("✍️ Pendataan Pengeluaran Material Harian (Pagi/Siang)")
     if st.session_state.pesan_sukses:
         st.success(st.session_state.pesan_sukses)
         st.session_state.pesan_sukses = ""
         
     col_kabel, col_sn = st.columns(2)
     with col_kabel:
-        st.markdown("### 🧵 1. Input Pengeluaran Kabel Precon")
+        st.markdown("#### 🧵 1. Input Pengeluaran Kabel Precon")
         with st.container(border=True):
             tek_kabel = st.selectbox("Pilih Tim / Teknisi (Kabel):", DAFTAR_TEKNISI, key="tek_kabel")
             pilihan_kabel = st.selectbox("Pilih Jenis / Ukuran Kabel Precon:", DAFTAR_KABEL_OTOMATIS, key="pilihan_kabel")
@@ -138,36 +139,95 @@ if menu == "✍️ Input & Scan Harian Teknisi":
                 st.toast("Berhasil menyimpan data kabel!", icon="🧵")
 
     with col_sn:
-        st.markdown("### 📟 2. Scan Otomatis SN Device (ONT / STB)")
+        st.markdown("#### 📟 2. Scan Otomatis SN Device (ONT / STB)")
         with st.container(border=True):
             st.selectbox("Pilih Tim / Teknisi (Device):", DAFTAR_TEKNISI, key="tek_device")
             st.text_input("Nomor WO / Keterangan (Device):", key="wo_device")
             st.text_input("KOTAK SCANNER SN:", placeholder="Tembak barcode SN ke sini...", key="scan_sn_key", on_change=proses_scan_sn)
 
     st.markdown("---")
+    st.markdown("#### 📋 Tabel Pengeluaran Barang Hari Ini")
     if not st.session_state.log_scan_harian.empty:
         st.dataframe(st.session_state.log_scan_harian, use_container_width=True)
+        st.download_button(label="📥 Download Log Pengeluaran Pagi (.CSV)", data=st.session_state.log_scan_harian.to_csv(index=False).encode('utf-8'), file_name=f"PENGELUARAN_PAGI_{datetime.now().strftime('%Y%m%d')}.csv", mime="text/csv", use_container_width=True)
     else:
-        st.info("Belum ada data material yang di-input atau di-scan hari ini.")
+        st.info("Belum ada data barang keluar pagi ini.")
 
-# ==================== MENU 2: MASTER SN ====================
-elif menu == "🔍 Lihat & Cari Master SN":
-    st.subheader("🔍 Pusat Data Master SN")
-    st.dataframe(df_master, use_container_width=True)
+# ==================== 🛠️ MENU BARU: LAPORAN PENGGUNAAN SORE ====================
+elif menu == "📝 Laporan Penggunaan Sore (Hasil Lapangan)":
+    st.subheader("📝 Laporan Hasil Kerja Lapangan Sore Hari")
+    st.write("Gunakan form di bawah ini setiap sore untuk mendata apakah material yang dibawa teknisi berhasil diinstal atau tidak.")
+    
+    with st.container(border=True):
+        col_sore_left, col_sore_right = st.columns(2)
+        
+        with col_sore_left:
+            tek_sore = st.selectbox("Pilih Nama Tim / Teknisi:", DAFTAR_TEKNISI, key="tek_sore")
+            wo_sore = st.text_input("Nomor WO / ID Pelanggan:", key="wo_sore", placeholder="Contoh: WO-102938")
+            status_sore = st.selectbox("Status Pemasangan Material:", ["Sudah Terinstal ✅", "Belum Terinstal / Kembali ke Gudang (Retur) ❌"], key="status_sore")
+            
+        with col_sore_right:
+            jenis_mat = st.radio("Jenis Material yang Dilaporkan:", ["Device (ONT / STB)", "Kabel Precon"], key="jenis_mat")
+            if jenis_mat == "Device (ONT / STB)":
+                detail_mat = st.text_input("Masukkan / Scan SN Device:", key="sn_sore", placeholder="Tembak barcode SN ke sini...")
+            else:
+                detail_mat = st.selectbox("Pilih Jenis Kabel Precon:", DAFTAR_KABEL_OTOMATIS, key="kabel_sore")
+                
+            ket_sore = st.text_input("Keterangan Tambahan (Opsional):", key="ket_sore", placeholder="Contoh: Redaman bagus / Pelanggan minta cancel")
+            
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("💾 Simpan Laporan Sore ke Sistem", use_container_width=True, type="primary"):
+            if jenis_mat == "Device (ONT / STB)" and not detail_mat.strip():
+                st.error("Gagal menyimpan! Serial Number (SN) Device tidak boleh kosong.")
+            else:
+                waktu_sekarang = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                new_row_sore = {
+                    'Waktu Input': waktu_sekarang,
+                    'Nama Teknisi': tek_sore,
+                    'No WO / Keterangan': wo_sore if wo_sore else "-",
+                    'Jenis Material': jenis_mat,
+                    'Detail Material / SN': detail_mat.strip(),
+                    'Status Pemasangan': status_sore,
+                    'Keterangan Tambahan': ket_sore if ket_sore else "-"
+                }
+                st.session_state.log_penggunaan_sore = pd.concat([st.session_state.log_penggunaan_sore, pd.DataFrame([new_row_sore])], ignore_index=True)
+                st.success(f"✅ Berhasil mencatat laporan sore untuk tim {tek_sore}!")
+
+    st.markdown("---")
+    st.markdown("#### 📋 Rekap Tabel Laporan Penggunaan Sore Hari")
+    if not st.session_state.log_penggunaan_sore.empty:
+        st.dataframe(st.session_state.log_penggunaan_sore, use_container_width=True)
+        
+        # Tombol Download Khusus Data Sore
+        csv_sore_data = st.session_state.log_penggunaan_sore.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="📥 Download File Excel Laporan Sore (.CSV)", 
+            data=csv_sore_data, 
+            file_name=f"LAPORAN_PENGGUNAAN_SORE_{datetime.now().strftime('%Y%m%d')}.csv", 
+            mime="text/csv", 
+            use_container_width=True
+        )
+        
+        # Tombol Clear Data Sore
+        if st.button("🗑️ Reset / Kosongkan Laporan Sore"):
+            st.session_state.log_penggunaan_sore = pd.DataFrame(columns=['Waktu Input', 'Nama Teknisi', 'No WO / Keterangan', 'Jenis Material', 'Detail Material / SN', 'Status Pemasangan', 'Keterangan Tambahan'])
+            st.rerun()
+    else:
+        st.info("Sore ini belum ada data penggunaan material yang di-input.")
 
 # ==================== MENU 3: STOK GUDANG ====================
-elif menu == "📦 Stok Gudang":
-    st.subheader("📦 Data Stok Gudang")
+elif menu == "📦 Lihat Stok Gudang":
+    st.subheader("📦 Data Stok Gudang Asli")
     t1, t2 = st.tabs(["📟 Device", "🧵 Kabel PRECON"])
     with t1:
         if df_device is not None: st.dataframe(df_device, use_container_width=True)
-        else: st.info(f"File Excel '{EXCEL_FILE}' tidak terdeteksi atau sheet 'Stock Device' salah nama.")
+        else: st.info(f"File Excel '{EXCEL_FILE}' tidak terdeteksi atau sheet 'Stock Device' kosong.")
     with t2:
         if df_precon is not None: st.dataframe(df_precon, use_container_width=True)
-        else: st.info(f"File Excel '{EXCEL_FILE}' tidak terdeteksi atau sheet 'Stock PRECON' salah nama.")
+        else: st.info(f"File Excel '{EXCEL_FILE}' tidak terdeteksi atau sheet 'Stock PRECON' kosong.")
 
 # ==================== MENU 4: HISTORI EXCEL TEKNISI ====================
-elif menu == "👨‍🔧 Histori Excel Teknisi":
+elif menu == "👨‍🔧 Histori Sheet Teknisi":
     st.subheader("👨‍🔧 Histori Sheet Penggunaan Teknisi")
     pilihan = st.selectbox("Pilih Nama Tim:", DAFTAR_TEKNISI)
     df_tek = load_excel_sheet(pilihan)
