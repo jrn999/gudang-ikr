@@ -220,7 +220,8 @@ elif menu == "📝 Laporan Penggunaan Sore (Update Status)":
                 "Nama Barang": st.column_config.TextColumn(disabled=True),
                 "Kabel Precon": st.column_config.TextColumn(disabled=True),
                 "No WO / Keterangan": st.column_config.TextColumn(disabled=True),
-                "Status Pemasangan Sore": st.column_config.SelectColumn(
+                # FIX DI SINI: Menggunakan SelectboxColumn yang benar bawaan Streamlit
+                "Status Pemasangan Sore": st.column_config.SelectboxColumn(
                     "Status Pemasangan Sore",
                     options=["Belum Dilaporkan ⏳", "Sudah Terinstal ✅", "Belum Terinstal / Retur ❌"],
                     required=True
