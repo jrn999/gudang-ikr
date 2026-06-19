@@ -40,6 +40,8 @@ def load_excel_sheet(sheet_name):
     if os.path.exists(EXCEL_FILE):
         try:
             df = pd.read_excel(EXCEL_FILE, sheet_name=sheet_name, engine='openpyxl')
+            # Bersihkan spasi gaib di nama kolom jika ada
+            df.columns = df.columns.str.strip()
             return df
         except Exception as e:
             return None
@@ -50,14 +52,35 @@ df_master = load_master_sn()
 df_device = load_excel_sheet("Stock Device")
 df_precon = load_excel_sheet("Stock PRECON")
 
-# Daftar 10 Tim Teknisi Sesuai Sheet Excel Kamu
+# --- PROSES MEMBUAT DAFTAR KABEL OTOMATIS DARI EXCEL ---
+DAFTAR_KABEL_OTOMATIS = []
+if df_precon is not None and 'Description' in df_precon.columns:
+    # Mengambil kolom Description, membuang baris kosong, dan mengubah ke list
+    list_kabel = df_precon['Description'].dropna().astype(str).tolist()
+    # Filter hanya baris yang mengandung informasi kabel (menghindari baris Total/Keterangan lain)
+    DAFTAR_KABEL_OTOMATIS = [kabel.strip() for kabel in list_kabel if "CABLE" in kabel or "MTR" in kabel]
+
+# Jika karena suatu hal file excel tidak terbaca, gunakan fallback list lengkap ini
+if not DAFTAR_KABEL_OTOMATIS:
+    DAFTAR_KABEL_OTOMATIS = [
+        "DTFIBER - CABLE PRECON SC/UPC-SC/APC - 75MTR",
+        "DTFIBER - CABLE PRECON SC/UPC-SC/APC - 125MTR",
+        "DTFIBER - CABLE PRECON SC/UPC-SC/APC - 175MTR",
+        "DTFIBER - CABLE PRECON SC/UPC-SC/APC - 225MTR",
+        "DTFIBER - CABLE PRECON SC/UPC-SC/APC - 300MTR",
+        "FIBERART - CABLE PRECON SC/UPC-SC/APC - 75MTR",
+        "FIBERART - CABLE PRECON SC/UPC-SC/APC - 300MTR",
+        "NEXTFIBER - CABLE PRECON SC/UPC-SC/APC - 300MTR"
+    ]
+
+# Daftar 10 Tim Teknisi
 DAFTAR_TEKNISI = [
     "PUTRA-SONY", "RIYAN-RIYADI", "NADI-PARI", "ARIF-YASRIL", 
     "NOVANS-GOBY", "PERI-ROBIN", "TEDI-DODI", "REFKY-DODI", 
     "RAHMAN-AGUS", "IDDO-NAUFAL"
 ]
 
-# --- SAKTI AUTOMATIC CALLBACK: JALAN OTOMATIS BEGITU SELESAI SCAN ---
+# --- SAKTI AUTOMATIC CALLBACK: LANGSUNG BERHASIL BEGITU SELESAI SCAN ---
 def proses_scan_sn():
     sn_value = st.session_state.scan_sn_key.strip()
     if sn_value:
@@ -119,21 +142,24 @@ if menu == "📊 Dashboard Utama":
 # ==================== 2. INPUT & SCAN HARIAN TEKNISI ====================
 elif menu == "✍️ Input & Scan Harian Teknisi":
     st.title("✍️ Pendataan Material Harian Teknisi")
-    st.write("Menu inputan sekarang dipisah menjadi dua kolom mandiri demi akurasi dan sinkronisasi data.")
+    st.write("Menu inputan terpisah mandiri demi akurasi dan sinkronisasi data.")
     
     # Notifikasi Pop-up Hijau saat Berhasil Scan SN
     if st.session_state.pesan_sukses:
         st.success(st.session_state.pesan_sukses)
-        st.session_state.pesan_sukses = "" # Clear message
+        st.session_state.pesan_sukses = "" # Clear message after displaying
         
     col_kabel, col_sn = st.columns(2)
     
-    # ---------------- KOLOM KIRI: KHUSUS INPUT KABEL PRECON ----------------
+    # ---------------- KOLOM KIRI: KHUSUS INPUT KABEL PRECON (OTOMATIS SESUAI EXCEL) ----------------
     with col_kabel:
         st.markdown("### 🧵 1. Input Pengeluaran Kabel Precon")
         with st.container(border=True):
             tek_kabel = st.selectbox("Pilih Tim / Teknisi (Kabel):", DAFTAR_TEKNISI, key="tek_kabel")
-            pilihan_kabel = st.selectbox("Ukuran / Panjang Kabel Precon:", ["75 MTR", "125 MTR", "150 MTR", "1 Rol Keluar"], key="pilihan_kabel")
+            
+            # DROPDOWN INI SEKARANG OTOMATIS SAMA DENGAN ISI FILE EXCEL STOCK PRECON KAMU
+            pilihan_kabel = st.selectbox("Pilih Jenis / Ukuran Kabel Precon:", DAFTAR_KABEL_OTOMATIS, key="pilihan_kabel")
+            
             wo_kabel = st.text_input("Nomor WO / Keterangan (Kabel):", placeholder="Contoh: WO-KABEL-01", key="wo_kabel")
             
             st.markdown("<br>", unsafe_allow_html=True)
@@ -144,7 +170,7 @@ elif menu == "✍️ Input & Scan Harian Teknisi":
                     'Waktu Scan': waktu_sekarang,
                     'Nama Teknisi': tek_kabel,
                     'Serial Number (SN)': "-",
-                    'Nama Barang': "Kabel Precon Only",
+                    'Nama Barang': "Kabel Precon",
                     'Kabel Precon': pilihan_kabel,
                     'No WO / Keterangan': wo_kabel if wo_kabel else "-"
                 }
@@ -158,15 +184,14 @@ elif menu == "✍️ Input & Scan Harian Teknisi":
             st.selectbox("Pilih Tim / Teknisi (Device):", DAFTAR_TEKNISI, key="tek_device")
             st.text_input("Nomor WO / Keterangan (Device):", placeholder="Contoh: WO-ONT-99", key="wo_device")
             
-            st.markdown("👇 **ARAHKAN KURSOR & KETIK/SCAN BARCODE DI BAWAH INI:**")
-            # Parameter on_change akan langsung memicu fungsi simpan begitu scanner menekan enter secara otomatis
+            st.markdown("👇 **ARAHKAN KURSOR DAN SCAN BARCODE SN DI BAWAH INI:**")
             st.text_input(
                 "KOTAK SCANNER SN:", 
-                placeholder="Arahkan scanner ke sini lalu tembak barcode...", 
+                placeholder="Tembak barcode SN ke sini...", 
                 key="scan_sn_key", 
                 on_change=proses_scan_sn
             )
-            st.info("💡 **Cara Kerja:** Begitu barcode di-scan, data langsung amblas masuk ke tabel di bawah tanpa perlu menekan tombol simpan lagi. Kolom akan langsung kosong kembali sehingga siap digunain untuk scan berturut-turut!")
+            st.info("💡 **Langsung Berhasil:** Begitu barcode di-scan (atau ditekan enter), data amblas masuk ke tabel bawah, notifikasi sukses muncul, dan kotak input langsung otomatis bersih kosong kembali!")
 
     # Tampilkan Tabel Live Hasil Pendataan Hari Ini
     st.markdown("---")
