@@ -41,9 +41,12 @@ if 'log_penggunaan_sore' not in st.session_state:
 if 'pesan_sukses' not in st.session_state:
     st.session_state.pesan_sukses = ""
     
-# SESSION STATE BARU UNTUK MENAMPUNG PESAN ERROR DOUBLE SCAN
 if 'pesan_error' not in st.session_state:
     st.session_state.pesan_error = ""
+
+# STATE BARU UNTUK INDIKATOR CENTANG DI UJUNG KOLOM
+if 'status_scan_terakhir' not in st.session_state:
+    st.session_state.status_scan_terakhir = "kosong"
 
 # Fungsi loading data master SN (CSV)
 @st.cache_data
@@ -91,22 +94,21 @@ if not DAFTAR_KABEL_OTOMATIS:
 
 DAFTAR_TEKNISI = ["PUTRA-SONY", "RIYAN-RIYADI", "NADI-PARI", "ARIF-YASRIL", "NOVANS-GOBY", "PERI-ROBIN", "TEDI-DODI", "REFKY-DODI", "RAHMAN-AGUS", "IDDO-NAUFAL"]
 
-# --- AUTOMATIC CALLBACK SCAN SN (DENGAN PROTEKSI ANTI-DOUBLE) ---
+# --- AUTOMATIC CALLBACK SCAN SN ---
 def proses_scan_sn():
     sn_value = st.session_state.scan_sn_key.strip()
     if sn_value:
-        # 1. 🛡️ PROTEKSI ANTI-DOUBLE SCAN
+        # 1. Cek Proteksi Anti-Double Scan
         if not st.session_state.log_scan_harian.empty:
-            # Ambil semua SN yang sudah terdata di tabel harian (ubah ke huruf kecil semua)
             sn_terdata = st.session_state.log_scan_harian['Serial Number (SN)'].astype(str).str.lower().values
             if sn_value.lower() in sn_terdata:
-                # Jika SN sudah ada, tembak Error dan TOLAK masuk tabel!
-                st.session_state.pesan_error = f"🚨 SCAN DITOLAK! SN '{sn_value}' sudah pernah di-scan sebelumnya hari ini!"
+                st.session_state.pesan_error = f"🚨 SCAN DITOLAK! SN '{sn_value}' sudah di-scan hari ini!"
                 st.session_state.pesan_sukses = ""
-                st.session_state.scan_sn_key = "" # Langsung kosongkan kotak biar bisa scan yang lain
+                st.session_state.status_scan_terakhir = "double" # Picu icon silang ❌
+                st.session_state.scan_sn_key = ""
                 return
         
-        # 2. Jika lolos cek double, lanjut validasi ke master SN
+        # 2. Jika lolos cek double, validasi ke master SN
         pencarian = df_master[df_master['SN'].astype(str).str.lower() == sn_value.lower()]
         nama_barang = pencarian.iloc[0].get('Nama_Barang', 'Device Terdaftar') if not pencarian.empty else "ONT/STB (Manual/Tidak di Master)"
         
@@ -118,8 +120,9 @@ def proses_scan_sn():
         }
         st.session_state.log_scan_harian = pd.concat([st.session_state.log_scan_harian, pd.DataFrame([new_row])], ignore_index=True)
         st.session_state.pesan_sukses = f"🎉 BERHASIL: SN '{sn_value}' ({nama_barang}) tersimpan!"
-        st.session_state.pesan_error = "" # Hapus pesan error lama jika ada
-        st.session_state.scan_sn_key = "" # Kosongkan kotak input
+        st.session_state.pesan_error = ""
+        st.session_state.status_scan_terakhir = "sukses" # Picu icon centang ✅
+        st.session_state.scan_sn_key = ""
 
 # --- SIDEBAR NAVIGASI ---
 st.sidebar.markdown("### 📊 NAVIGATION MENU")
@@ -137,7 +140,7 @@ menu = st.sidebar.radio(
 if menu == "✍️ Scan & Input Pagi (Pengeluaran)":
     st.subheader("✍️ Pendataan Pengeluaran Material Harian (Pagi/Siang)")
     
-    # Memunculkan Notifikasi Pop-Up Status Sukses / Gagal
+    # Notifikasi Alert Box Tetap Ada Sebagai Pelengkap Detail info
     if st.session_state.pesan_sukses:
         st.success(st.session_state.pesan_sukses)
         st.session_state.pesan_sukses = ""
@@ -166,7 +169,30 @@ if menu == "✍️ Scan & Input Pagi (Pengeluaran)":
         with st.container(border=True):
             st.selectbox("Pilih Tim / Teknisi (Device):", DAFTAR_TEKNISI, key="tek_device")
             st.text_input("Nomor WO / Keterangan (Device):", key="wo_device")
-            st.text_input("KOTAK SCANNER SN:", placeholder="Tembak barcode SN ke sini...", key="scan_sn_key", on_change=proses_scan_sn)
+            
+            # Label ditaruh di luar kolom biar sejajar rapi
+            st.markdown("**KOTAK SCANNER SN:**")
+            
+            # --- MODIFIKASI LAYOUT: MEMBUAT KOLOM INDIKATOR DI UJUNG ---
+            col_box_input, col_icon_status = st.columns([5, 1])
+            
+            with col_box_input:
+                st.text_input(
+                    "KOTAK SCANNER SN", 
+                    placeholder="Tembak barcode SN ke sini...", 
+                    key="scan_sn_key", 
+                    on_change=proses_scan_sn,
+                    label_visibility="collapsed" # Menyembunyikan label bawaan streamlit biar gak makan space
+                )
+                
+            with col_icon_status:
+                # Menampilkan icon dinamis di ujung kolom scan sesuai status terakhir
+                if st.session_state.status_scan_terakhir == "sukses":
+                    st.markdown("<p style='font-size: 26px; margin: 0; padding-top: 2px; text-align: center;'>✅</p>", unsafe_allow_html=True)
+                elif st.session_state.status_scan_terakhir == "double":
+                    st.markdown("<p style='font-size: 26px; margin: 0; padding-top: 2px; text-align: center;'>❌</p>", unsafe_allow_html=True)
+                else:
+                    st.markdown("<p style='font-size: 26px; margin: 0; padding-top: 2px; text-align: center; color: gray;'>➖</p>", unsafe_allow_html=True)
 
     st.markdown("---")
     st.markdown("#### 📋 Tabel Pengeluaran Barang Hari Ini")
@@ -176,6 +202,7 @@ if menu == "✍️ Scan & Input Pagi (Pengeluaran)":
         
         if st.button("🗑️ Kosongkan Tabel Pagi (Reset)"):
             st.session_state.log_scan_harian = pd.DataFrame(columns=['Waktu Scan', 'Nama Teknisi', 'Serial Number (SN)', 'Nama Barang', 'Kabel Precon', 'No WO / Keterangan'])
+            st.session_state.status_scan_terakhir = "kosong" # Reset icon jadi strip kembali
             st.rerun()
     else:
         st.info("Belum ada data barang keluar pagi ini.")
