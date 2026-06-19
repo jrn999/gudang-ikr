@@ -3,7 +3,7 @@ import pandas as pd
 import os
 from datetime import datetime
 
-# Konfigurasi halaman utama
+# Konfigurasi halaman utama (Wajib paling atas)
 st.set_page_config(
     page_title="Sistem Logistik IKR Metech", 
     layout="wide", 
@@ -27,7 +27,7 @@ for f in semua_file:
     if "MATERIAL IKR" in f and f.endswith('.xlsx'):
         EXCEL_FILE = f
 
-# --- DEKLARASI SESSION STATE (DATABASE UTAMA YANG TERINTEGRASI) ---
+# --- DEKLARASI SESSION STATE UTAMA ---
 if 'log_scan_harian' not in st.session_state:
     st.session_state.log_scan_harian = pd.DataFrame(
         columns=[
@@ -117,8 +117,8 @@ def proses_scan_sn():
             'Nama Barang': nama_barang, 
             'Kabel Precon': "-", 
             'No WO / Keterangan': st.session_state.wo_device if st.session_state.wo_device else "-",
-            'Status Pemasangan Sore': "Belum Dilaporkan ⏳", # Default status untuk sore
-            'Keterangan Tambahan Sore': "-"                  # Default keterangan untuk sore
+            'Status Pemasangan Sore': "Belum Dilaporkan ⏳",
+            'Keterangan Tambahan Sore': "-"
         }
         st.session_state.log_scan_harian = pd.concat([st.session_state.log_scan_harian, pd.DataFrame([new_row])], ignore_index=True)
         st.session_state.pesan_sukses = f"🎉 BERHASIL: SN '{sn_value}' ({nama_barang}) tersimpan!"
@@ -205,13 +205,12 @@ if menu == "✍️ Scan & Input Pagi (Pengeluaran)":
     else:
         st.info("Belum ada data barang keluar pagi ini.")
 
-# ==================== 🛠️ MENU LAPORAN SORE VERSI INTERAKTIF ====================
+# ==================== MENU LAPORAN SORE VERSI INTERAKTIF ====================
 elif menu == "📝 Laporan Penggunaan Sore (Update Status)":
     st.subheader("📝 Laporan Hasil Kerja Lapangan Sore Hari")
     st.info("💡 CARA PENGGUNAAN: Cukup lihat grup Telegram kamu. Lalu pada tabel di bawah, KLIK ganda pada kolom 'Status Pemasangan Sore' untuk merubah status, atau KLIK ganda pada 'Keterangan Tambahan Sore' untuk mengetik catatan lapangan. Tidak perlu scan ulang!")
     
     if not st.session_state.log_scan_harian.empty:
-        # Menggunakan st.data_editor agar user bisa edit kolom tertentu layaknya Excel
         tabel_edit_sore = st.data_editor(
             st.session_state.log_scan_harian,
             column_config={
@@ -221,13 +220,11 @@ elif menu == "📝 Laporan Penggunaan Sore (Update Status)":
                 "Nama Barang": st.column_config.TextColumn(disabled=True),
                 "Kabel Precon": st.column_config.TextColumn(disabled=True),
                 "No WO / Keterangan": st.column_config.TextColumn(disabled=True),
-                # Kolom status dijadikan dropdown pilihan interaktif
                 "Status Pemasangan Sore": st.column_config.SelectColumn(
                     "Status Pemasangan Sore",
                     options=["Belum Dilaporkan ⏳", "Sudah Terinstal ✅", "Belum Terinstal / Retur ❌"],
                     required=True
                 ),
-                # Kolom keterangan sore dibebaskan untuk diketik manual
                 "Keterangan Tambahan Sore": st.column_config.TextColumn("Keterangan Tambahan Sore (Ketik Sini)")
             },
             disabled=["Waktu Scan", "Nama Teknisi", "Serial Number (SN)", "Nama Barang", "Kabel Precon", "No WO / Keterangan"],
@@ -235,14 +232,11 @@ elif menu == "📝 Laporan Penggunaan Sore (Update Status)":
             key="gudang_editor_sore"
         )
         
-        # Menyimpan langsung setiap perubahan data ke dalam memory utama aplikasi
         st.session_state.log_scan_harian = tabel_edit_sore
         
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("#### 📥 Download Hasil Rekapitulasi Berkas Lengkap")
-        st.write("Satu file di bawah ini sudah berisi data komplit gabungan scan pagi dan laporan sore kamu:")
         
-        # Download satu file final berisi data pagi + sore sekaligus!
         csv_final_data = st.session_state.log_scan_harian.to_csv(index=False).encode('utf-8')
         st.download_button(
             label="📥 Download Berkas Logistik Harian (.CSV)", 
