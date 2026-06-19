@@ -13,18 +13,59 @@ st.set_page_config(
 
 st.title("⚡ Sistem Logistik IKR Metech")
 
-# --- DETEKSI FILE DI GITHUB (OTOMATIS) ---
+# --- DETEKSI FILE DI GITHUB (SISTEM SCANNING OTOMATIS & ANTI-GAGAL) ---
 semua_file = os.listdir('.')
 
-MASTER_SN_FILE = "Untitled spreadsheet - 1. MASTER_SN.csv"
+# 1. Scanning Pintar untuk File MASTER SN (.csv)
+MASTER_SN_FILE = None
 for f in semua_file:
-    if "MASTER_SN" in f:
+    if f.endswith('.csv') and ("MASTER" in f.upper() or "SN" in f.upper()):
         MASTER_SN_FILE = f
+        break
+if not MASTER_SN_FILE:
+    for f in semua_file:
+        if f.endswith('.csv'):
+            MASTER_SN_FILE = f
+            break
+if not MASTER_SN_FILE:
+    MASTER_SN_FILE = "Untitled spreadsheet - 1. MASTER_SN.csv"
 
-EXCEL_FILE = "MATERIAL IKR [ KEBUTUHAN WO HARIAN ].xlsx"
+# 2. Scanning Pintar untuk File Excel Stock (.xlsx)
+EXCEL_FILE = None
 for f in semua_file:
-    if "MATERIAL IKR" in f and f.endswith('.xlsx'):
+    if f.endswith('.xlsx') and ("MATERIAL" in f.upper() or "IKR" in f.upper() or "WO" in f.upper() or "STOCK" in f.upper()):
         EXCEL_FILE = f
+        break
+# Jika tidak ketemu keyword, sikat file .xlsx apa saja yang ada di root folder
+if not EXCEL_FILE:
+    for f in semua_file:
+        if f.endswith('.xlsx'):
+            EXCEL_FILE = f
+            break
+if not EXCEL_FILE:
+    EXCEL_FILE = "MATERIAL IKR [ KEBUTUHAN WO HARIAN ].xlsx"
+
+# --- FUNGSI LOADING DATA ---
+@st.cache_data
+def load_master_sn(nama_file):
+    if os.path.exists(nama_file):
+        try:
+            df = pd.read_csv(nama_file)
+            df.columns = df.columns.str.strip()
+            return df
+        except:
+            return pd.DataFrame(columns=['SN', 'Nama_Barang', 'Kode_Gudang', 'Deskripsi'])
+    return pd.DataFrame(columns=['SN', 'Nama_Barang', 'Kode_Gudang', 'Deskripsi'])
+
+def load_excel_sheet(nama_file, sheet_name):
+    if os.path.exists(nama_file):
+        try:
+            df = pd.read_excel(nama_file, sheet_name=sheet_name, engine='openpyxl')
+            df.columns = df.columns.str.strip()
+            return df
+        except:
+            return None
+    return None
 
 # --- DEKLARASI SESSION STATE (DATABASE INTERN APLIKASI) ---
 if 'log_scan_harian' not in st.session_state:
@@ -39,35 +80,13 @@ if 'pesan_sukses' not in st.session_state: st.session_state.pesan_sukses = ""
 if 'pesan_error' not in st.session_state: st.session_state.pesan_error = ""
 if 'status_scan_terakhir' not in st.session_state: st.session_state.status_scan_terakhir = "kosong"
 
-# --- FUNGSI LOADING DATA ---
-@st.cache_data
-def load_master_sn():
-    if os.path.exists(MASTER_SN_FILE):
-        try:
-            df = pd.read_csv(MASTER_SN_FILE)
-            df.columns = df.columns.str.strip()
-            return df
-        except:
-            return pd.DataFrame(columns=['SN', 'Nama_Barang', 'Kode_Gudang', 'Deskripsi'])
-    return pd.DataFrame(columns=['SN', 'Nama_Barang', 'Kode_Gudang', 'Deskripsi'])
+# Load database ke session state secara dinamis berdasarkan file yang terdeteksi
+if 'df_device' not in st.session_state or st.session_state.df_device is None:
+    st.session_state.df_device = load_excel_sheet(EXCEL_FILE, "Stock Device")
+if 'df_precon' not in st.session_state or st.session_state.df_precon is None:
+    st.session_state.df_precon = load_excel_sheet(EXCEL_FILE, "Stock PRECON")
 
-def load_excel_sheet(sheet_name):
-    if os.path.exists(EXCEL_FILE):
-        try:
-            df = pd.read_excel(EXCEL_FILE, sheet_name=sheet_name, engine='openpyxl')
-            df.columns = df.columns.str.strip()
-            return df
-        except:
-            return None
-    return None
-
-# --- MENYIMPAN DATABASE STOK DI SESSION STATE ---
-if 'df_device' not in st.session_state:
-    st.session_state.df_device = load_excel_sheet("Stock Device")
-if 'df_precon' not in st.session_state:
-    st.session_state.df_precon = load_excel_sheet("Stock PRECON")
-
-df_master = load_master_sn()
+df_master = load_master_sn(MASTER_SN_FILE)
 
 # --- PROSES DAFTAR KABEL ---
 DAFTAR_KABEL_OTOMATIS = []
@@ -190,7 +209,6 @@ elif menu == "📝 Laporan Penggunaan Sore (Update Status)":
     st.subheader("📝 Laporan Hasil Kerja Lapangan Sore Hari")
     
     if not st.session_state.log_scan_harian.empty:
-        # DI SINI FIX UTAMANYA: Menggunakan SelectboxColumn, bukan SelectColumn!
         tabel_edit_sore = st.data_editor(
             st.session_state.log_scan_harian,
             column_config={
@@ -273,17 +291,19 @@ elif menu == "📝 Laporan Penggunaan Sore (Update Status)":
 elif menu == "📊 Dashboard & Stok Gudang":
     st.subheader("📊 Dashboard Utama Gudang")
     
-    st.markdown("### 📌 Status Sinkronisasi File Excel di GitHub")
-    # Fix Tampilan dari image_663968.png agar mendeteksi file asli dengan benar tanpa error CSV siluman
+    st.markdown("### 📌 Status Sinkronisasi File di GitHub")
+    
+    # Menampilkan file CSV apa yang berhasil di-hook secara otomatis
     if os.path.exists(MASTER_SN_FILE):
         st.success(f"✅ Master SN: Terkoneksi ({MASTER_SN_FILE})")
     else:
-        st.error(f"❌ Master SN: File '{MASTER_SN_FILE}' TIDAK DITEMUKAN di GitHub!")
+        st.error(f"❌ Master SN: File '{MASTER_SN_FILE}' TIDAK DITEMUKAN!")
         
+    # Menampilkan nama file Excel asli hasil deteksi pintar agar tidak error merah lagi
     if os.path.exists(EXCEL_FILE):
-        st.success(f"✅ Master Excel Stok: Terkoneksi ({EXCEL_FILE})")
+        st.success(f"✅ Master Excel Stok: Terkoneksi Aktif ({EXCEL_FILE})")
     else:
-        st.error(f"❌ Master Excel Stok: File '{EXCEL_FILE}' TIDAK DITEMUKAN di GitHub!")
+        st.error(f"❌ Master Excel Stok: File Excel tidak terdeteksi di root folder GitHub!")
 
     st.markdown("---")
     critical_items = []
@@ -318,6 +338,8 @@ elif menu == "📊 Dashboard & Stok Gudang":
             if len(num_cols) > 0:
                 st.bar_chart(pd.DataFrame({'Jumlah Stok': df_plot[num_cols[0]].fillna(0)}).set_index(df_plot.iloc[:, 0].astype(str)))
             st.dataframe(st.session_state.df_device, use_container_width=True)
+        else:
+            st.info("Data sheet 'Stock Device' kosong atau file Excel belum terbaca.")
     with t2:
         if st.session_state.df_precon is not None:
             df_plot_p = st.session_state.df_precon.copy()
@@ -328,11 +350,13 @@ elif menu == "📊 Dashboard & Stok Gudang":
             if len(num_cols_p) > 0:
                 st.bar_chart(pd.DataFrame({'Jumlah Saldo': df_plot_p[num_cols_p[0]].fillna(0)}).set_index(df_plot_p[desc_col].astype(str)))
             st.dataframe(st.session_state.df_precon, use_container_width=True)
+        else:
+            st.info("Data sheet 'Stock PRECON' kosong atau file Excel belum terbaca.")
 
 # ==================== MENU 4: HISTORI EXCEL TEKNISI ====================
 elif menu == "👨‍🔧 Histori Sheet Teknisi":
     st.subheader("👨‍🔧 Histori Sheet Penggunaan Teknisi")
     pilihan = st.selectbox("Pilih Nama Tim:", DAFTAR_TEKNISI)
-    df_tek = load_excel_sheet(pilihan)
+    df_tek = load_excel_sheet(EXCEL_FILE, pilihan)
     if df_tek is not None: st.dataframe(df_tek.dropna(how='all'), use_container_width=True)
     else: st.info(f"Sheet bernama '{pilihan}' tidak ditemukan di dalam file Excel.")
