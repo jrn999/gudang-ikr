@@ -14,11 +14,13 @@ st.set_page_config(
 EXCEL_FILE = "MATERIAL IKR [ KEBUTUHAN WO HARIAN ].xlsx"
 MASTER_SN_FILE = "Untitled spreadsheet - 1. MASTER_SN.csv"
 
-# --- DEKLARASI SESSION STATE (Untuk Menyimpan Hasil Scan Sementara) ---
+# --- DEKLARASI SESSION STATE ---
 if 'log_scan_harian' not in st.session_state:
     st.session_state.log_scan_harian = pd.DataFrame(
         columns=['Waktu Scan', 'Nama Teknisi', 'Serial Number (SN)', 'Nama Barang', 'Kabel Precon', 'No WO / Keterangan']
     )
+if 'pesan_sukses' not in st.session_state:
+    st.session_state.pesan_sukses = ""
 
 # Fungsi loading data master SN
 @st.cache_data
@@ -55,6 +57,33 @@ DAFTAR_TEKNISI = [
     "RAHMAN-AGUS", "IDDO-NAUFAL"
 ]
 
+# --- SAKTI AUTOMATIC CALLBACK: JALAN OTOMATIS BEGITU SELESAI SCAN ---
+def proses_scan_sn():
+    sn_value = st.session_state.scan_sn_key.strip()
+    if sn_value:
+        # Validasi otomatis ke data master SN
+        pencarian = df_master[df_master['SN'].astype(str).str.lower() == sn_value.lower()]
+        if not pencarian.empty:
+            nama_barang = pencarian.iloc[0].get('Nama_Barang', 'Device Terdaftar')
+        else:
+            nama_barang = "ONT/STB (Manual/Tidak di Master)"
+        
+        # Masukkan langsung ke database log harian
+        waktu_sekarang = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        new_row = {
+            'Waktu Scan': waktu_sekarang,
+            'Nama Teknisi': st.session_state.tek_device,
+            'Serial Number (SN)': sn_value,
+            'Nama Barang': nama_barang,
+            'Kabel Precon': "-",
+            'No WO / Keterangan': st.session_state.wo_device if st.session_state.wo_device else "-"
+        }
+        st.session_state.log_scan_harian = pd.concat([st.session_state.log_scan_harian, pd.DataFrame([new_row])], ignore_index=True)
+        st.session_state.pesan_sukses = f"🎉 BERHASIL: SN '{sn_value}' ({nama_barang}) untuk tim {st.session_state.tek_device} langsung tersimpan!"
+        
+        # SAKTI: Mengosongkan kolom input secara otomatis agar siap untuk scan SN berikutnya
+        st.session_state.scan_sn_key = ""
+
 # --- SIDEBAR NAVIGASI ---
 st.sidebar.title("🛠️ Logistik IKR Cloud")
 st.sidebar.markdown("---")
@@ -62,7 +91,7 @@ menu = st.sidebar.radio(
     "PILIH MENU APLIKASI:",
     [
         "📊 Dashboard Utama", 
-        "✍️ Input & Scan Harian Teknisi", # Ini Fitur Utama Pendataan Kamu!
+        "✍️ Input & Scan Harian Teknisi", 
         "🔍 Lihat & Cari Master SN", 
         "📦 Stok Gudang", 
         "👨‍🔧 Monitoring Sheet Teknisi"
@@ -79,7 +108,7 @@ if menu == "📊 Dashboard Utama":
     with col1:
         st.metric(label="Total Master SN Terdaftar", value=f"{int(total_sn)} Item")
     with col2:
-        st.metric(label="Material Terdata Hari Ini (Belum Diclone)", value=f"{int(total_input_hari_ini)} Item", delta="Live")
+        st.metric(label="Material Terdata Hari Ini", value=f"{int(total_input_hari_ini)} Item", delta="Live")
         
     st.markdown("### 📌 Status File Gudang di GitHub")
     if os.path.exists(MASTER_SN_FILE):
@@ -89,53 +118,59 @@ if menu == "📊 Dashboard Utama":
 
 # ==================== 2. INPUT & SCAN HARIAN TEKNISI ====================
 elif menu == "✍️ Input & Scan Harian Teknisi":
-    st.title("✍️ Pendataan & Scan Material Harian Teknisi")
-    st.write("Gunakan halaman ini untuk mencatat pengeluaran device (SN) dan kabel precon yang dibawa teknisi.")
+    st.title("✍️ Pendataan Material Harian Teknisi")
+    st.write("Menu inputan sekarang dipisah menjadi dua kolom mandiri demi akurasi dan sinkronisasi data.")
     
-    # Form Input Gabungan
-    with st.expander("🚀 BUKA FORM SCAN INPUT BARANG", expanded=True):
-        c1, c2 = st.columns(2)
-        with c1:
-            pilihan_tek = st.selectbox("1. Pilih Nama Tim / Teknisi:", DAFTAR_TEKNISI)
-            input_wo = st.text_input("2. Nomor WO / Keterangan:", placeholder="Contoh: WO-12345 atau Pasang Baru")
-            pilihan_kabel = st.selectbox("3. Kabel Precon Yang Dibawa:", ["Tidak Bawa Kabel", "75 MTR", "125 MTR", "150 MTR", "1 Rol Keluar"])
+    # Notifikasi Pop-up Hijau saat Berhasil Scan SN
+    if st.session_state.pesan_sukses:
+        st.success(st.session_state.pesan_sukses)
+        st.session_state.pesan_sukses = "" # Clear message
         
-        with c2:
-            st.markdown("**4. Bagian Scan Serial Number (Device):**")
-            scan_sn = st.text_input("👉 ARAHKAN KURSOR KE SINI LALU SCAN / KETIK SN:", placeholder="Ketik atau scan barcode SN...").strip()
+    col_kabel, col_sn = st.columns(2)
+    
+    # ---------------- KOLOM KIRI: KHUSUS INPUT KABEL PRECON ----------------
+    with col_kabel:
+        st.markdown("### 🧵 1. Input Pengeluaran Kabel Precon")
+        with st.container(border=True):
+            tek_kabel = st.selectbox("Pilih Tim / Teknisi (Kabel):", DAFTAR_TEKNISI, key="tek_kabel")
+            pilihan_kabel = st.selectbox("Ukuran / Panjang Kabel Precon:", ["75 MTR", "125 MTR", "150 MTR", "1 Rol Keluar"], key="pilihan_kabel")
+            wo_kabel = st.text_input("Nomor WO / Keterangan (Kabel):", placeholder="Contoh: WO-KABEL-01", key="wo_kabel")
             
-            nama_barang_terdeteksi = "Bukan Device (Hanya Kabel)"
-            if scan_sn:
-                # Validasi otomatis ke data master SN
-                pencarian = df_master[df_master['SN'].astype(str).str.lower() == scan_sn.lower()]
-                if not pencarian.empty:
-                    nama_barang_terdeteksi = pencarian.iloc[0].get('Nama_Barang', 'Device Terdaftar')
-                    st.success(f"🎯 SN Terdeteksi Merek: **{nama_barang_terdeteksi}**")
-                else:
-                    st.warning("⚠️ SN tidak ditemukan di Master, tapi tetap bisa kamu input manual.")
-                    nama_barang_terdeteksi = st.text_input("Masukkan Nama/Jenis Barang Manual:", value="ONT/STB")
+            st.markdown("<br>", unsafe_allow_html=True)
+            tombol_kabel = st.button("➕ Simpan Kabel ke Log", use_container_width=True, type="primary")
+            if tombol_kabel:
+                waktu_sekarang = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                new_row = {
+                    'Waktu Scan': waktu_sekarang,
+                    'Nama Teknisi': tek_kabel,
+                    'Serial Number (SN)': "-",
+                    'Nama Barang': "Kabel Precon Only",
+                    'Kabel Precon': pilihan_kabel,
+                    'No WO / Keterangan': wo_kabel if wo_kabel else "-"
+                }
+                st.session_state.log_scan_harian = pd.concat([st.session_state.log_scan_harian, pd.DataFrame([new_row])], ignore_index=True)
+                st.toast(f"Berhasil menyimpan data kabel untuk {tek_kabel}!", icon="🧵")
 
-        st.markdown("---")
-        tombol_simpan = st.button("➕ Simpan ke Log Hari Ini", use_container_width=True)
-        
-        if tombol_simpan:
-            waktu_sekarang = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            # Masukkan data ke tabel temporary
-            new_row = {
-                'Waktu Scan': waktu_sekarang,
-                'Nama Teknisi': pilihan_tek,
-                'Serial Number (SN)': scan_sn if scan_sn else "-",
-                'Nama Barang': nama_barang_terdeteksi,
-                'Kabel Precon': pilihan_kabel,
-                'No WO / Keterangan': input_wo if input_wo else "-"
-            }
-            st.session_state.log_scan_harian = pd.concat([st.session_state.log_scan_harian, pd.DataFrame([new_row])], ignore_index=True)
-            st.toast(f"Berhasil mencatat material untuk {pilihan_tek}!", icon="✅")
+    # ---------------- KOLOM KANAN: KHUSUS AUTO-SCAN DEVICE (ONT/STB) ----------------
+    with col_sn:
+        st.markdown("### 📟 2. Scan Otomatis SN Device (ONT / STB)")
+        with st.container(border=True):
+            st.selectbox("Pilih Tim / Teknisi (Device):", DAFTAR_TEKNISI, key="tek_device")
+            st.text_input("Nomor WO / Keterangan (Device):", placeholder="Contoh: WO-ONT-99", key="wo_device")
+            
+            st.markdown("👇 **ARAHKAN KURSOR & KETIK/SCAN BARCODE DI BAWAH INI:**")
+            # Parameter on_change akan langsung memicu fungsi simpan begitu scanner menekan enter secara otomatis
+            st.text_input(
+                "KOTAK SCANNER SN:", 
+                placeholder="Arahkan scanner ke sini lalu tembak barcode...", 
+                key="scan_sn_key", 
+                on_change=proses_scan_sn
+            )
+            st.info("💡 **Cara Kerja:** Begitu barcode di-scan, data langsung amblas masuk ke tabel di bawah tanpa perlu menekan tombol simpan lagi. Kolom akan langsung kosong kembali sehingga siap digunain untuk scan berturut-turut!")
 
     # Tampilkan Tabel Live Hasil Pendataan Hari Ini
     st.markdown("---")
-    st.subheader("📋 Data Pengeluaran Material Hari Ini")
-    st.write("Tabel di bawah ini menampung semua hasil scan kamu secara live:")
+    st.subheader("📋 Tabel Gabungan Hasil Log Pengeluaran Hari Ini")
     
     if not st.session_state.log_scan_harian.empty:
         st.dataframe(st.session_state.log_scan_harian, use_container_width=True)
@@ -143,7 +178,7 @@ elif menu == "✍️ Input & Scan Harian Teknisi":
         # Tombol Download Excel Instan
         csv_data = st.session_state.log_scan_harian.to_csv(index=False).encode('utf-8')
         st.download_button(
-            label="📥 Download Data Scan Hari Ini (.CSV/Excel)",
+            label="📥 Download Data Scan Hari Ini (.CSV / Excel)",
             data=csv_data,
             file_name=f"LOG_IKR_{datetime.now().strftime('%Y%m%d')}.csv",
             mime="text/csv",
@@ -155,7 +190,7 @@ elif menu == "✍️ Input & Scan Harian Teknisi":
             st.session_state.log_scan_harian = pd.DataFrame(columns=['Waktu Scan', 'Nama Teknisi', 'Serial Number (SN)', 'Nama Barang', 'Kabel Precon', 'No WO / Keterangan'])
             st.rerun()
     else:
-        st.info("Belum ada data material yang di-scan hari ini. Silakan isi form di atas untuk mendata.")
+        st.info("Belum ada data material yang di-input atau di-scan hari ini.")
 
 # ==================== 3. LIHAT & CARI MASTER SN ====================
 elif menu == "🔍 Lihat & Cari Master SN":
