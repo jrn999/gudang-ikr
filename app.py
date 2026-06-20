@@ -15,7 +15,7 @@ st.set_page_config(
 
 st.title("⚡ Sistem Logistik IKR Metech")
 
-# --- AMBIL KREDENSIAL GITHUB DARI SECRETS (VERSI ANTI-CRASH) ---
+# --- AMBIL KREDENSIAL GITHUB DARI SECRETS ---
 GITHUB_TOKEN = ""
 REPO_NAME = ""
 
@@ -27,12 +27,49 @@ try:
 except Exception:
     pass
 
-# --- TEMPLATE DATABASE DEFAULT JIKA FILE BELUM ADA ---
-df_device_default = pd.DataFrame({
-    'Nama Barang': ['ONT Premium', 'STB HD Box', 'Access Point Outdoor', 'ONT/STB (Manual/Tidak di Master)', 'Device Terdaftar'],
-    'Stok Gudang': [100, 100, 100, 100, 100]
-})
+# --- 1. SCAN & SELEKSI FILE MASTER SN LOKAL (DIPONEK DI AWAL) ---
+semua_file = os.listdir('.')
+MASTER_SN_FILE = None
+for f in semua_file:
+    if f.endswith('.csv') and ("MASTER" in f.upper() or "SN" in f.upper()):
+        MASTER_SN_FILE = f
+        break
+if not MASTER_SN_FILE: 
+    MASTER_SN_FILE = "Untitled spreadsheet - 1. MASTER_SN.csv"
 
+@st.cache_data
+def load_master_sn(nama_file):
+    if nama_file and os.path.exists(nama_file):
+        try:
+            df = pd.read_csv(nama_file)
+            df.columns = df.columns.str.strip()
+            return df
+        except:
+            return pd.DataFrame(columns=['SN', 'Nama_Barang', 'Kode_Gudang', 'Deskripsi'])
+    return pd.DataFrame(columns=['SN', 'Nama_Barang', 'Kode_Gudang', 'Deskripsi'])
+
+df_master = load_master_sn(MASTER_SN_FILE)
+
+# --- 2. HITUNG STOK DEVICE OTOMATIS DARI DATA REAL MASTER SN ---
+if not df_master.empty and 'Nama_Barang' in df_master.columns:
+    # Hitung total kemunculan setiap barang di Master SN
+    df_counts = df_master['Nama_Barang'].value_counts().reset_index()
+    df_counts.columns = ['Nama Barang', 'Stok Gudang']
+    
+    # Tambahkan baris manual untuk pengaman jika ada item di luar master
+    baris_cadangan = pd.DataFrame([
+        {'Nama Barang': 'ONT/STB (Manual/Tidak di Master)', 'Stok Gudang': 0},
+        {'Nama Barang': 'Device Terdaftar', 'Stok Gudang': 0}
+    ])
+    df_device_default = pd.concat([df_counts, baris_cadangan], ignore_index=True)
+else:
+    # Fallback jika file master SN benar-benar kosong / tidak terbaca
+    df_device_default = pd.DataFrame({
+        'Nama Barang': ['ONT Premium', 'STB HD Box', 'Access Point Outdoor', 'ONT/STB (Manual/Tidak di Master)', 'Device Terdaftar'],
+        'Stok Gudang': [0, 0, 0, 0, 0]
+    })
+
+# Template default untuk material kabel Precon (Bulk)
 df_precon_default = pd.DataFrame({
     'Nama Material': [
         "DTFIBER - CABLE PRECON SC/UPC-SC/APC - 75MTR",
@@ -52,14 +89,12 @@ def load_atau_buat_file_github(nama_file, df_default):
         g = Github(GITHUB_TOKEN)
         repo = g.get_repo(REPO_NAME)
         
-        # Pastikan branch 'data-log' sudah aktif
         try:
             repo.get_branch("data-log")
         except Exception:
             main_branch = repo.get_branch("main")
             repo.create_git_ref(ref="refs/heads/data-log", sha=main_branch.commit.sha)
             
-        # Coba ambil file, kalau tidak ada langsung buat otomatis di GitHub
         try:
             contents = repo.get_contents(nama_file, ref="data-log")
             df = pd.read_csv(io.StringIO(contents.decoded_content.decode('utf-8')))
@@ -92,29 +127,6 @@ def simpan_file_ke_github(nama_file, df, pesan_commit="Auto-Update"):
             repo.create_file(nama_file, f"Inisialisasi {nama_file}", csv_string, branch="data-log")
     except Exception as e:
         st.error(f"🚨 Gagal sinkronisasi {nama_file} ke GitHub: {e}")
-
-# --- SCANNING FILE MASTER SN LOKAL ---
-semua_file = os.listdir('.')
-MASTER_SN_FILE = None
-for f in semua_file:
-    if f.endswith('.csv') and ("MASTER" in f.upper() or "SN" in f.upper()):
-        MASTER_SN_FILE = f
-        break
-if not MASTER_SN_FILE: 
-    MASTER_SN_FILE = "Untitled spreadsheet - 1. MASTER_SN.csv"
-
-@st.cache_data
-def load_master_sn(nama_file):
-    if nama_file and os.path.exists(nama_file):
-        try:
-            df = pd.read_csv(nama_file)
-            df.columns = df.columns.str.strip()
-            return df
-        except:
-            return pd.DataFrame(columns=['SN', 'Nama_Barang', 'Kode_Gudang', 'Deskripsi'])
-    return pd.DataFrame(columns=['SN', 'Nama_Barang', 'Kode_Gudang', 'Deskripsi'])
-
-df_master = load_master_sn(MASTER_SN_FILE)
 
 # --- SINKRONISASI INITIAL STATE KE SESSION STATE ---
 if 'log_scan_harian' not in st.session_state:
@@ -229,7 +241,6 @@ if menu == "✍️ Scan & Input Pagi (Pengeluaran)":
     st.info("💡 **Tips Koreksi:** Klik dua kali pada kotak untuk mengganti data yang salah, atau klik ujung kiri baris lalu tekan **Delete** di keyboard untuk menghapus baris.")
     
     if not st.session_state.log_scan_harian.empty:
-        # MENYALAKAN FITUR DATA EDITOR (DENGAN NUM_ROWS DYNAMIC UNTUK DELETE BARIS)
         tabel_edit_pagi = st.data_editor(
             st.session_state.log_scan_harian,
             num_rows="dynamic",
@@ -237,7 +248,6 @@ if menu == "✍️ Scan & Input Pagi (Pengeluaran)":
             key="gudang_editor_pagi"
         )
         
-        # Deteksi perubahan manual untuk langsung dikunci otomatis ke GitHub
         if not tabel_edit_pagi.equals(st.session_state.log_scan_harian):
             st.session_state.log_scan_harian = tabel_edit_pagi
             simpan_file_ke_github("log_harian.csv", st.session_state.log_scan_harian, "Koreksi Manual Input Pagi")
@@ -322,19 +332,18 @@ elif menu == "📝 Laporan Penggunaan Sore (Update Status)":
 # ==================== MENU 3: DASHBOARD UTAMA ====================
 elif menu == "📊 Dashboard & Stok Gudang":
     st.subheader("📊 Dashboard Utama Gudang")
-    st.markdown("### 📌 Status Sinkronisasi File di GitHub")
+    st.markdown("### 📌 Status Sinkronisasi File")
     
     if MASTER_SN_FILE and os.path.exists(MASTER_SN_FILE):
         st.success(f"✅ Master SN: Terkoneksi Aktif ({MASTER_SN_FILE})")
     else:
-        st.error("❌ Master SN: File tidak ditemukan di Main Branch!")
+        st.error("❌ Master SN: File tidak ditemukan!")
         
-    st.success("✅ Stok Device: Terkoneksi & Sinkron Otomatis (database_device.csv)")
+    st.success("✅ Stok Device: Sinkron Otomatis Real Hitungan Master SN (database_device.csv)")
     st.success("✅ Stok PRECON: Terkoneksi & Sinkron Otomatis (database_precon.csv)")
-    st.info("☁️ Cloud Auto-Save Active: Semua data diamankan di branch 'data-log'")
 
     st.markdown("---")
-    t1, t2 = st.tabs(["📟 Stock Device", "🧵 Stock PRECON"])
+    t1, t2 = st.tabs(["📟 Stock Device (Hitungan Master SN)", "🧵 Stock PRECON"])
     with t1:
         if st.session_state.df_device is not None: 
             st.dataframe(st.session_state.df_device, use_container_width=True)
