@@ -1,22 +1,4 @@
 import streamlit as st
-st.markdown("""
-    <style>
-    /* Mengubah warna background sidebar menjadi ungu */
-    [data-testid="stSidebar"] {
-        background-color: #5D5CDE;
-    }
-    /* Mengubah warna teks sidebar menjadi putih agar terlihat di background ungu */
-    [data-testid="stSidebar"] * {
-        color: white;
-    }
-    /* Membuat tombol "Tambah Item" berwarna ungu */
-    div.stButton > button {
-        background-color: #5D5CDE;
-        color: white;
-        border: none;
-    }
-    </style>
-""", unsafe_allow_html=True)
 import pandas as pd
 import os
 import requests
@@ -235,28 +217,28 @@ if pilihan_menu == "pagi":
     col_kabel, col_sn = st.columns(2)
     with col_kabel:
         st.markdown("#### 🧵 1. Input Pengeluaran Kabel Precon")
-        if pilihan_menu == "pagi":
-    # Membuat kartu (container) dengan border
-    with st.container(border=True):
-        st.subheader("📦 Input Barang Masuk Pagi")
-        
-        # Menggunakan kolom untuk layout sejajar
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.text_input("Serial Number (SN)", placeholder="4857544368A9B7AE")
-            st.selectbox("Nama Teknisi", ["-- Pilih Teknisi --", "Teknisi 1", "Teknisi 2"])
+        with st.container(border=True):
+            tek_kabel = st.selectbox("Pilih Tim / Teknisi (Kabel):", DAFTAR_TEKNISI, key="tek_kabel")
+            pilihan_kabel = st.selectbox("Pilih Jenis / Ukuran Kabel Precon:", DAFTAR_KABEL_OTOMATIS, key="pilihan_kabel")
+            jumlah_roll = st.number_input("Jumlah Pengeluaran (Roll):", min_value=1, value=1, step=1, key="jumlah_roll")
+            wo_kabel = st.text_input("Nomor WO / Keterangan Awal (Kabel):", key="wo_kabel")
             
-        with col2:
-            st.selectbox("Jenis Barang", ["-- Pilih Jenis --", "Ont ZTE", "Kabel"])
-            st.number_input("Jumlah Unit", value=1)
-        
-        # Text area untuk keterangan
-        st.text_area("Keterangan", placeholder="Catatan tambahan...")
-        
-        # Tombol
-        if st.button("➕ Tambah Item", use_container_width=True):
-            st.success("Data berhasil ditambahkan!")
+            if st.button("➕ Simpan Kabel ke Log", use_container_width=True, type="primary"):
+                for i in range(int(jumlah_roll)):
+                    label_roll = f"Roll {i+1}"
+                    ket_final = f"{wo_kabel} ({label_roll})" if wo_kabel else label_roll
+                    
+                    new_row = {
+                        'Waktu Scan': datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 'Nama Teknisi': tek_kabel, 
+                        'Serial Number (SN)': "-", 'Nama Barang': "Kabel Precon", 'Kabel Precon': pilihan_kabel, 
+                        'No WO / Keterangan': ket_final, 'Status Pemasangan Sore': "Belum Dilaporkan ⏳", 
+                        'Keterangan Tambahan Sore': "-", 'Stok Dipotong': "Belum"
+                    }
+                    st.session_state.log_scan_harian = pd.concat([st.session_state.log_scan_harian, pd.DataFrame([new_row])], ignore_index=True)
+                
+                simpan_file_ke_github("log_harian.csv", st.session_state.log_scan_harian, "Auto-Update Input Kabel")
+                st.toast(f"Berhasil menambahkan {jumlah_roll} Baris Kabel!", icon="🧵")
+                st.rerun()
 
     with col_sn:
         st.markdown("#### 📟 2. Scan Otomatis SN Device (ONT / STB)")
