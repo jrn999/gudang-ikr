@@ -3,6 +3,8 @@ import pandas as pd
 import os
 import requests
 from datetime import datetime
+from github import Github  # TAMBAHAN UNTUK INTEGRASI GITHUB
+import io                  # TAMBAHAN UNTUK INTEGRASI GITHUB
 
 # Konfigurasi halaman utama
 st.set_page_config(
@@ -12,6 +14,82 @@ st.set_page_config(
 )
 
 st.title("⚡ Sistem Logistik IKR Metech")
+
+# --- AMBIL KREDENSIAL GITHUB DARI SECRETS (TAMBAHAN OPSI 2) ---
+GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", "")
+REPO_NAME = st.secrets.get("GITHUB_REPO", "")
+
+# --- FUNGSI AUTO-SAVE KE GITHUB VIA BRANCH SEPARATE 'data-log' (TAMBAHAN OPSI 2) ---
+def load_data_dari_github():
+    if not GITHUB_TOKEN or not REPO_NAME:
+        # Jika secrets belum di-setup, berikan struktur tabel kosong default
+        return pd.DataFrame(
+            columns=[
+                'Waktu Scan', 'Nama Teknisi', 'Serial Number (SN)', 'Nama Barang', 
+                'Kabel Precon', 'No WO / Keterangan', 'Status Pemasangan Sore', 'Keterangan Tambahan Sore', 'Stok Dipotong'
+            ]
+        )
+    try:
+        g = Github(GITHUB_TOKEN)
+        repo = g.get_repo(REPO_NAME)
+        
+        # Cek apakah branch 'data-log' sudah ada, jika belum bikin otomatis
+        try:
+            repo.get_branch("data-log")
+        except Exception:
+            main_branch = repo.get_branch("main")
+            repo.create_git_ref(ref="refs/heads/data-log", sha=main_branch.commit.sha)
+            
+        # Ambil file log_harian.csv dari branch data-log
+        try:
+            contents = repo.get_contents("log_harian.csv", ref="data-log")
+            df = pd.read_csv(io.StringIO(contents.decoded_content.decode('utf-8')))
+            df.columns = df.columns.str.strip()
+            return df
+        except Exception:
+            # Jika file belum ada sama sekali di branch tersebut, buat struktur kosong
+            return pd.DataFrame(
+                columns=[
+                    'Waktu Scan', 'Nama Teknisi', 'Serial Number (SN)', 'Nama Barang', 
+                    'Kabel Precon', 'No WO / Keterangan', 'Status Pemasangan Sore', 'Keterangan Tambahan Sore', 'Stok Dipotong'
+                ]
+            )
+    except Exception as e:
+        st.sidebar.error(f"⚠️ Gagal load cadangan GitHub: {e}")
+        return pd.DataFrame(
+            columns=[
+                'Waktu Scan', 'Nama Teknisi', 'Serial Number (SN)', 'Nama Barang', 
+                'Kabel Precon', 'No WO / Keterangan', 'Status Pemasangan Sore', 'Keterangan Tambahan Sore', 'Stok Dipotong'
+            ]
+        )
+
+def simpan_ke_github(df):
+    if not GITHUB_TOKEN or not REPO_NAME:
+        return
+    try:
+        g = Github(GITHUB_TOKEN)
+        repo = g.get_repo(REPO_NAME)
+        csv_string = df.to_csv(index=False)
+        try:
+            # Ambil SHA file lama untuk ditimpa (update)
+            contents = repo.get_contents("log_harian.csv", ref="data-log")
+            repo.update_file(
+                "log_harian.csv", 
+                f"Auto-Update Log {datetime.now().strftime('%Y-%m-%d %H:%M')}", 
+                csv_string, 
+                contents.sha, 
+                branch="data-log"
+            )
+        except Exception:
+            # Jika file bener-bener baru pertama kali dibikin di branch ini
+            repo.create_file(
+                "log_harian.csv", 
+                "Inisialisasi Log Harian", 
+                csv_string, 
+                branch="data-log"
+            )
+    except Exception as e:
+        st.error(f"🚨 Gagal auto-save ke GitHub: {e}")
 
 # --- DETEKSI FILE SUPER PINTAR (Mendukung Excel .xlsx maupun Split .csv) ---
 semua_file = os.listdir('.')
@@ -78,14 +156,9 @@ def load_data_gudang(nama_file, is_csv, sheet_name):
             return None
     return None
 
-# --- DEKLARASI SESSION STATE (DATABASE APLIKASI) ---
+# --- DEKLARASI SESSION STATE (DATABASE APLIKASI KINI TERHUBUNG GITHUB) ---
 if 'log_scan_harian' not in st.session_state:
-    st.session_state.log_scan_harian = pd.DataFrame(
-        columns=[
-            'Waktu Scan', 'Nama Teknisi', 'Serial Number (SN)', 'Nama Barang', 
-            'Kabel Precon', 'No WO / Keterangan', 'Status Pemasangan Sore', 'Keterangan Tambahan Sore', 'Stok Dipotong'
-        ]
-    )
+    st.session_state.log_scan_harian = load_data_dari_github()  # MODIFIKASI: Load otomatis dari GitHub
 
 if 'pesan_sukses' not in st.session_state: st.session_state.pesan_sukses = ""
 if 'pesan_error' not in st.session_state: st.session_state.pesan_error = ""
@@ -141,7 +214,11 @@ def proses_scan_sn():
             'Status Pemasangan Sore': "Belum Dilaporkan ⏳", 'Keterangan Tambahan Sore': "-", 'Stok Dipotong': "Belum"
         }
         st.session_state.log_scan_harian = pd.concat([st.session_state.log_scan_harian, pd.DataFrame([new_row])], ignore_index=True)
-        st.session_state.pesan_sukses = f"🎉 BERHASIL: SN '{sn_value}' ({nama_barang}) tersimpan!"
+        
+        # [MODIFIKASI] Auto-save langsung ke GitHub setelah sukses scan SN
+        simpan_ke_github(st.session_state.log_scan_harian)
+        
+        st.session_state.pesan_sukses = f"🎉 BERHASIL: SN '{sn_value}' ({nama_barang}) tersimpan aman di GitHub!"
         st.session_state.pesan_error = ""
         st.session_state.status_scan_terakhir = "sukses"
         st.session_state.scan_sn_key = ""
@@ -190,7 +267,10 @@ if menu == "✍️ Scan & Input Pagi (Pengeluaran)":
                         'Stok Dipotong': "Belum"
                     }
                     st.session_state.log_scan_harian = pd.concat([st.session_state.log_scan_harian, pd.DataFrame([new_row])], ignore_index=True)
-                st.toast(f"Berhasil mengurai {jumlah_roll} Baris Kabel ke tabel!", icon="🧵")
+                
+                # [MODIFIKASI] Auto-save langsung ke GitHub setelah loop urai kabel selesai
+                simpan_ke_github(st.session_state.log_scan_harian)
+                st.toast(f"Berhasil mengurai {jumlah_roll} Baris Kabel & dikunci ke GitHub!", icon="🧵")
 
     with col_sn:
         st.markdown("#### 📟 2. Scan Otomatis SN Device (ONT / STB)")
@@ -204,7 +284,7 @@ if menu == "✍️ Scan & Input Pagi (Pengeluaran)":
             with col_icon_status:
                 if st.session_state.status_scan_terakhir == "sukses": st.markdown("<p style='font-size:26px;margin:0;text-align:center;'>✅</p>", unsafe_allow_html=True)
                 elif st.session_state.status_scan_terakhir == "double": st.markdown("<p style='font-size:26px;margin:0;text-align:center;'>❌</p>", unsafe_allow_html=True)
-                else: st.markdown("<p style='font-size:26px;margin:0;text-align:center;color:gray;'>➖</p>", unsafe_allow_html=True)
+                else: st.markdown("<p style='font-size:26px;margin:0;text-align:center;color:gray;'>-%s</p>" % "", unsafe_allow_html=True)
 
     st.markdown("---")
     st.markdown("#### 📋 Tabel Pengeluaran Barang Hari Ini")
@@ -212,6 +292,10 @@ if menu == "✍️ Scan & Input Pagi (Pengeluaran)":
         st.dataframe(st.session_state.log_scan_harian, use_container_width=True)
         if st.button("🗑️ Reset Tabel Hari Ini"):
             st.session_state.log_scan_harian = pd.DataFrame(columns=['Waktu Scan', 'Nama Teknisi', 'Serial Number (SN)', 'Nama Barang', 'Kabel Precon', 'No WO / Keterangan', 'Status Pemasangan Sore', 'Keterangan Tambahan Sore', 'Stok Dipotong'])
+            
+            # [MODIFIKASI] Sinkronisasi reset tabel agar file cadangan di GitHub juga bersih kosongan
+            simpan_ke_github(st.session_state.log_scan_harian)
+            
             st.session_state.status_scan_terakhir = "kosong"
             st.rerun()
     else:
@@ -220,9 +304,9 @@ if menu == "✍️ Scan & Input Pagi (Pengeluaran)":
 # ==================== MENU 2: LAPORAN SORE ====================
 elif menu == "📝 Laporan Penggunaan Sore (Update Status)":
     st.subheader("📝 Laporan Hasil Kerja Lapangan Sore Hari")
+    st.info("💡 Setelah merubah Status Pemasangan Sore atau Keterangan, pastikan Anda menekan tombol 'Proses Sinkronisasi & Potong Stok Otomatis' di bawah untuk mengunci perubahan ke GitHub.")
     
     if not st.session_state.log_scan_harian.empty:
-        # Menggunakan SelectboxColumn (Solusi perbaikan Error image_591204)
         tabel_edit_sore = st.data_editor(
             st.session_state.log_scan_harian,
             column_config={
@@ -231,7 +315,7 @@ elif menu == "📝 Laporan Penggunaan Sore (Update Status)":
                 "Serial Number (SN)": st.column_config.TextColumn(disabled=True), 
                 "Nama Barang": st.column_config.TextColumn(disabled=True),
                 "Kabel Precon": st.column_config.TextColumn(disabled=True), 
-                "No WO / Keterangan": st.column_config.TextColumn(disabled=False), # DIBUKA agar bisa ganti ukuran/WO per rol!
+                "No WO / Keterangan": st.column_config.TextColumn(disabled=False),
                 "Stok Dipotong": st.column_config.TextColumn(disabled=True),
                 "Status Pemasangan Sore": st.column_config.SelectboxColumn(
                     "Status Pemasangan Sore", 
@@ -277,11 +361,15 @@ elif menu == "📝 Laporan Penggunaan Sore (Update Status)":
                                         st.session_state.log_scan_harian.at[idx, 'Stok Dipotong'] = "Berhasil Terpotong 📉"
                                         jumlah_potong += 1
                                         break
+                                        
+            # [MODIFIKASI] Amankan & kunci perubahan data sore langsung ke GitHub
+            simpan_ke_github(st.session_state.log_scan_harian)
+            
             if jumlah_potong > 0:
-                st.success(f"🔥 Berhasil memotong {jumlah_potong} item material dari database internal gudang!")
+                st.success(f"🔥 Berhasil memotong {jumlah_potong} item material dari database internal gudang & disimpan ke GitHub!")
                 st.balloons()
             else:
-                st.info("Tidak ada item baru dengan status terpasang yang perlu dipotong.")
+                st.success("✅ Perubahan laporan sore berhasil disimpan aman ke GitHub!")
 
         st.markdown("### 📥 2. Unduh Berkas Hasil Akhir")
         st.download_button(label="📥 Download Berkas Rekap Logistik (.CSV)", data=st.session_state.log_scan_harian.to_csv(index=False).encode('utf-8'), file_name=f"REKAP_IKR_{datetime.now().strftime('%Y%m%d')}.csv", mime="text/csv", use_container_width=True)
@@ -308,6 +396,12 @@ elif menu == "📊 Dashboard & Stok Gudang":
     else:
         st.error("❌ Stok Precon: File tidak ditemukan di GitHub!")
 
+    # [MODIFIKASI] Info status pencadangan awan otomatis
+    if GITHUB_TOKEN and REPO_NAME:
+        st.info("☁️ Sistem Auto-Save GitHub Active: Data diamankan di branch 'data-log'")
+    else:
+        st.warning("⚠️ Sistem Auto-Save GitHub Belum Aktif: Pastikan GITHUB_TOKEN dan GITHUB_REPO sudah diisi di Secrets Streamlit Cloud!")
+
     st.markdown("---")
     t1, t2 = st.tabs(["📟 Stock Device", "🧵 Stock PRECON"])
     with t1:
@@ -321,7 +415,6 @@ elif menu == "📊 Dashboard & Stok Gudang":
 elif menu == "👨‍🔧 Histori Sheet Teknisi":
     st.subheader("👨‍🔧 Histori Sheet Penggunaan Teknisi")
     pilihan = st.selectbox("Pilih Nama Tim:", DAFTAR_TEKNISI)
-    # Gunakan file deteksi dinamis untuk backup pembacaan teknisi
     FILE_SAMPEL = DEVICE_FILE if DEVICE_FILE else PRECON_FILE
     if FILE_SAMPEL and FILE_SAMPEL.endswith('.xlsx'):
         df_tek = load_data_gudang(FILE_SAMPEL, False, pilihan)
