@@ -225,10 +225,26 @@ if menu == "✍️ Scan & Input Pagi (Pengeluaran)":
                 else: st.markdown("<p style='font-size:26px;margin:0;text-align:center;color:gray;'>-</p>", unsafe_allow_html=True)
 
     st.markdown("---")
-    st.markdown("#### 📋 Tabel Pengeluaran Barang Hari Ini")
+    st.markdown("#### 📋 Tabel Pengeluaran Barang Hari Ini (Bisa Diedit / Dihapus)")
+    st.info("💡 **Tips Koreksi:** Klik dua kali pada kotak untuk mengganti data yang salah, atau klik ujung kiri baris lalu tekan **Delete** di keyboard untuk menghapus baris.")
+    
     if not st.session_state.log_scan_harian.empty:
-        st.dataframe(st.session_state.log_scan_harian, use_container_width=True)
-        if st.button("🗑️ Reset Tabel Hari Ini"):
+        # MENYALAKAN FITUR DATA EDITOR (DENGAN NUM_ROWS DYNAMIC UNTUK DELETE BARIS)
+        tabel_edit_pagi = st.data_editor(
+            st.session_state.log_scan_harian,
+            num_rows="dynamic",
+            use_container_width=True,
+            key="gudang_editor_pagi"
+        )
+        
+        # Deteksi perubahan manual untuk langsung dikunci otomatis ke GitHub
+        if not tabel_edit_pagi.equals(st.session_state.log_scan_harian):
+            st.session_state.log_scan_harian = tabel_edit_pagi
+            simpan_file_ke_github("log_harian.csv", st.session_state.log_scan_harian, "Koreksi Manual Input Pagi")
+            st.toast("Koreksi data berhasil disimpan ke GitHub! 🔄")
+            st.rerun()
+            
+        if st.button("🗑️ Reset Semua Tabel Hari Ini"):
             st.session_state.log_scan_harian = pd.DataFrame(columns=['Waktu Scan', 'Nama Teknisi', 'Serial Number (SN)', 'Nama Barang', 'Kabel Precon', 'No WO / Keterangan', 'Status Pemasangan Sore', 'Keterangan Tambahan Sore', 'Stok Dipotong'])
             simpan_file_ke_github("log_harian.csv", st.session_state.log_scan_harian, "Reset Log Harian")
             st.session_state.status_scan_terakhir = "kosong"
@@ -330,7 +346,7 @@ elif menu == "📊 Dashboard & Stok Gudang":
         else: 
             st.info("Data Stock PRECON kosong.")
 
-# ==================== MENU 4: HISTORI SHEET TEKNISI (KEMBALI AKTIF) ====================
+# ==================== MENU 4: HISTORI SHEET TEKNISI ====================
 elif menu == "👨‍🔧 Histori Sheet Teknisi":
     st.subheader("👨‍🔧 Histori Sheet Penggunaan Teknisi")
     pilihan_tim = st.selectbox("Pilih Nama Tim / Teknisi:", DAFTAR_TEKNISI)
@@ -338,13 +354,10 @@ elif menu == "👨‍🔧 Histori Sheet Teknisi":
     st.markdown(f"#### 📋 Log Perjalanan Material Tim: **{pilihan_tim}**")
     
     if not st.session_state.log_scan_harian.empty:
-        # Filter data log harian secara cerdas berdasarkan teknisi terpilih
         df_filtered = st.session_state.log_scan_harian[st.session_state.log_scan_harian['Nama Teknisi'] == pilihan_tim]
         
         if not df_filtered.empty:
             st.dataframe(df_filtered, use_container_width=True)
-            
-            # Berikan info ringkasan ringkas untuk mempermudah mandor logistik
             total_bawa = len(df_filtered)
             total_sukses = len(df_filtered[df_filtered['Status Pemasangan Sore'] == "Sudah Terinstal ✅"])
             
