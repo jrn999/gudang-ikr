@@ -145,7 +145,7 @@ if st.session_state.df_precon is not None and len(st.session_state.df_precon.col
 if not DAFTAR_KABEL_OTOMATIS:
     DAFTAR_KABEL_OTOMATIS = ["DTFIBER - CABLE PRECON SC/UPC-SC/APC - 75MTR", "DTFIBER - CABLE PRECON SC/UPC-SC/APC - 125MTR"]
 
-DAFTAR_TEKNISI = ["PUTRA-SONY", "RIYAN-RIYADI", "NADI-PARI", "ARIF-YASRIL", "NOVANS-GOBY", "PERI-ROBIN", "TEDI-DODI", "REFKY-DODI", "RAHMAN-AGUS", "IDDO-NAUFAL"]
+DAFTAR_TEKNISI = ["PUTRA-SONY", "RIYAN-RIYADI", "NADI-PARI", "ARIF-", "NOVANS-GOBY", "PERI-ROBIN", "TEDI-DODI-DANIEL", "DANIEL-DODI", "RAHMAN-AGUS-FAJAR", "RIO-ARI"]
 
 def proses_scan_sn():
     sn_value = st.session_state.scan_sn_key.strip()
