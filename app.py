@@ -13,6 +13,30 @@ st.set_page_config(
     page_icon="⚡"
 )
 
+# --- INJEKSI CUSTOM CSS UNTUK EFEK KARTU (CARD) ---
+st.markdown("""
+<style>
+    /* Desain Kartu / Container untuk Mode Terang */
+    [data-testid="stVerticalBlock"] > [style*="border: 1px solid"] {
+        background-color: #f8f9fa;
+        border-radius: 12px;
+        box-shadow: 3px 3px 10px rgba(0,0,0,0.1);
+        padding: 20px;
+        margin-bottom: 20px;
+        border: 1px solid #dee2e6 !important;
+    }
+    
+    /* Penyesuaian Jika User Menggunakan Mode Gelap (Dark Mode) */
+    @media (prefers-color-scheme: dark) {
+        [data-testid="stVerticalBlock"] > [style*="border: 1px solid"] {
+            background-color: #1e1e24;
+            box-shadow: 3px 3px 10px rgba(0,0,0,0.4);
+            border: 1px solid #3b3b4f !important;
+        }
+    }
+</style>
+""", unsafe_allow_html=True)
+
 st.title("⚡ Sistem Logistik IKR Metech")
 
 # --- AMBIL KREDENSIAL GITHUB DARI SECRETS ---
