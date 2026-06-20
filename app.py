@@ -6,38 +6,107 @@ from datetime import datetime, timedelta
 from github import Github
 import io
 
-# Konfigurasi halaman utama
+# 1. Konfigurasi Halaman Utama
 st.set_page_config(
     page_title="Sistem Logistik IKR Metech", 
     layout="wide", 
     page_icon="⚡"
 )
 
-# --- INJEKSI CUSTOM CSS UNTUK EFEK KARTU (CARD) ---
+# 2. INJEKSI ADVANCED CSS (Merubah Streamlit Menjadi Seperti Tampilan image_b242de.jpg)
 st.markdown("""
 <style>
-    /* Desain Kartu / Container untuk Mode Terang */
-    [data-testid="stVerticalBlock"] > [style*="border: 1px solid"] {
-        background-color: #f8f9fa;
-        border-radius: 12px;
-        box-shadow: 3px 3px 10px rgba(0,0,0,0.1);
-        padding: 20px;
-        margin-bottom: 20px;
-        border: 1px solid #dee2e6 !important;
+    /* Sembunyikan hiasan bawaan Streamlit */
+    [data-testid="stDecoration"], [data-testid="stHeader"] {
+        display: none !important;
     }
     
-    /* Penyesuaian Jika User Menggunakan Mode Gelap (Dark Mode) */
-    @media (prefers-color-scheme: dark) {
-        [data-testid="stVerticalBlock"] > [style*="border: 1px solid"] {
-            background-color: #1e1e24;
-            box-shadow: 3px 3px 10px rgba(0,0,0,0.4);
-            border: 1px solid #3b3b4f !important;
-        }
+    /* Ubah warna background utama aplikasi */
+    .stApp {
+        background-color: #f4f6f9 !important;
+    }
+    
+    /* STYLING SIDEBAR (Gradasi Ungu & Text Putih) */
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #4b5cc4 0%, #764ba2 100%) !important;
+        color: white !important;
+    }
+    
+    /* Hilangkan lingkaran/dot asli pada Radio Button Sidebar */
+    [data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] > label > div:first-child {
+        display: none !important;
+    }
+    
+    /* Rombak list radio menjadi menu flat yang elegan */
+    [data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] {
+        gap: 6px !important;
+    }
+    
+    [data-testid="stSidebar"] div[data-testid="stRadio"] label {
+        padding: 12px 20px !important;
+        color: #e2e8f0 !important;
+        font-size: 14px !important;
+        font-weight: 500 !important;
+        border-radius: 0px 8px 8px 0px !important;
+        margin-right: 15px !important;
+        border-left: 4px solid transparent !important;
+        background-color: transparent !important;
+        transition: all 0.2s ease !important;
+        cursor: pointer !important;
+    }
+    
+    /* Efek Hover Menu Sidebar */
+    [data-testid="stSidebar"] div[data-testid="stRadio"] label:hover {
+        background-color: rgba(255, 255, 255, 0.1) !important;
+        color: white !important;
+    }
+    
+    /* MENU AKTIF (Garis Kuning + Background Agak Terang sesuai image_b242de.jpg) */
+    [data-testid="stSidebar"] div[data-testid="stRadio"] label[data-checked="true"] {
+        background-color: rgba(255, 255, 255, 0.2) !important;
+        color: white !important;
+        border-left: 4px solid #facc15 !important;
+        font-weight: 600 !important;
+    }
+    
+    /* STYLING KOTAK / CONTAINER UTAMA (Bentuk Card Putih + Shadow Halus) */
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        background-color: white !important;
+        border-radius: 12px !important;
+        box-shadow: 0px 4px 16px rgba(0, 0, 0, 0.04) !important;
+        border: 1px solid #eef2f6 !important;
+        padding: 28px !important;
+        margin-bottom: 20px !important;
+    }
+    
+    /* Modifikasi Form Input & Text Area */
+    div[data-testid="stWidgetLabel"] p {
+        font-weight: 500 !important;
+        color: #4b5563 !important;
+        font-size: 14px !important;
+        margin-bottom: 4px !important;
+    }
+    
+    input, select, textarea {
+        border-radius: 8px !important;
+        border: 1px solid #d1d5db !important;
+    }
+    
+    /* Tombol Utama (Warna Ungu) */
+    button[kind="primary"] {
+        background-color: #764ba2 !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 8px !important;
+        padding: 10px 24px !important;
+        font-weight: 500 !important;
+        box-shadow: 0px 2px 6px rgba(118, 75, 162, 0.3) !important;
+    }
+    button[kind="primary"]:hover {
+        background-color: #5c348a !important;
     }
 </style>
 """, unsafe_allow_html=True)
-
-st.title("⚡ Sistem Logistik IKR Metech")
 
 # --- AMBIL KREDENSIAL GITHUB DARI SECRETS ---
 GITHUB_TOKEN = ""
@@ -104,7 +173,6 @@ df_teknisi_default = pd.DataFrame({
     'Nama Teknisi': ["PUTRA-SONY", "RIYAN-RIYADI", "NADI-PARI", "ARIF-YASRIL", "NOVANS-GOBY", "PERI-ROBIN", "TEDI-DODI", "REFKY-DODI", "RAHMAN-AGUS", "IDDO-NAUFAL"]
 })
 
-# --- FUNGSI DYNAMIC LOAD ATAU BUAT FILE OTOMATIS DI GITHUB ---
 def load_atau_buat_file_github(nama_file, df_default):
     if not GITHUB_TOKEN or not REPO_NAME:
         return df_default
@@ -150,7 +218,7 @@ def simpan_file_ke_github(nama_file, df, pesan_commit="Auto-Update"):
     except Exception as e:
         st.error(f"🚨 Gagal sinkronisasi {nama_file} ke GitHub: {e}")
 
-# --- SINKRONISASI DATABASES KE SESSION STATE ---
+# --- SINKRONISASI DATABASES ---
 if 'log_scan_harian' not in st.session_state:
     st.session_state.log_scan_harian = load_atau_buat_file_github("log_harian.csv", pd.DataFrame(
         columns=['Waktu Scan', 'Nama Teknisi', 'Serial Number (SN)', 'Nama Barang', 'Kabel Precon', 'No WO / Keterangan', 'Status Pemasangan Sore', 'Keterangan Tambahan Sore', 'Stok Dipotong']
@@ -169,16 +237,9 @@ if 'pesan_sukses' not in st.session_state: st.session_state.pesan_sukses = ""
 if 'pesan_error' not in st.session_state: st.session_state.pesan_error = ""
 if 'status_scan_terakhir' not in st.session_state: st.session_state.status_scan_terakhir = "kosong"
 
-# Ambil List Dinamis untuk Dropdown Aplikasi
 DAFTAR_TEKNISI = st.session_state.df_teknisi['Nama Teknisi'].dropna().tolist() if not st.session_state.df_teknisi.empty else ["PUTRA-SONY"]
+DAFTAR_KABEL_OTOMATIS = st.session_state.df_precon.iloc[:, 0].dropna().astype(str).tolist() if st.session_state.df_precon is not None else ["DTFIBER - CABLE PRECON SC/UPC-SC/APC - 75MTR"]
 
-DAFTAR_KABEL_OTOMATIS = []
-if st.session_state.df_precon is not None and len(st.session_state.df_precon.columns) > 0:
-    DAFTAR_KABEL_OTOMATIS = st.session_state.df_precon.iloc[:, 0].dropna().astype(str).tolist()
-if not DAFTAR_KABEL_OTOMATIS:
-    DAFTAR_KABEL_OTOMATIS = ["DTFIBER - CABLE PRECON SC/UPC-SC/APC - 75MTR"]
-
-# Filter Otomatis Data khusus HARI INI
 hari_ini_str = datetime.now().strftime("%Y-%m-%d")
 df_hari_ini = pd.DataFrame()
 if not st.session_state.log_scan_harian.empty:
@@ -206,98 +267,125 @@ def proses_scan_sn():
             'Status Pemasangan Sore': "Belum Dilaporkan ⏳", 'Keterangan Tambahan Sore': "-", 'Stok Dipotong': "Belum"
         }
         st.session_state.log_scan_harian = pd.concat([st.session_state.log_scan_harian, pd.DataFrame([new_row])], ignore_index=True)
-        
         simpan_file_ke_github("log_harian.csv", st.session_state.log_scan_harian, "Auto-Update Scan SN")
         
-        st.session_state.pesan_sukses = f"🎉 BERHASIL: SN '{sn_value}' ({nama_barang}) tersimpan aman!"
+        st.session_state.pesan_sukses = f"🎉 BERHASIL: SN '{sn_value}' ({nama_barang}) tersimpan!"
         st.session_state.pesan_error = ""
         st.session_state.status_scan_terakhir = "sukses"
         st.session_state.scan_sn_key = ""
 
-# --- MAP NAVIGATION MENU ---
-st.sidebar.markdown("### 📊 NAVIGATION MENU")
+# --- SIDEBAR HEADER (Sesuai gambar referensi) ---
+st.sidebar.markdown("""
+<div style="padding: 5px 0px 15px 0px;">
+    <h2 style="color: white; font-size: 18px; font-weight: 700; margin: 0; letter-spacing: 0.5px;">📋 INVENTORY SYSTEM</h2>
+    <p style="color: #cbd5e1; font-size: 11px; margin: 2px 0 0 0;">Multi Aplikasi Manajemen</p>
+</div>
+<div style="color: #94a3b8; font-size: 11px; font-weight: 600; tracking: 1px; margin-bottom: 5px; margin-top: 10px;">APLIKASI UTAMA</div>
+""", unsafe_allow_html=True)
+
 menu_options = {
-    "pagi": "✍️ Scan & Input Pagi (Pengeluaran)",
-    "sore": "📝 Laporan Penggunaan Sore (Update Status)",
-    "bos": "📊 Laporan Eksekutif Ke Bos",
-    "gudang": "📉 Dashboard & Stok Gudang",
-    "teknisi": "👨‍🔧 Histori Sheet Teknisi",
-    "pengaturan": "⚙️ Pengaturan Tim & Material"
+    "pagi": "Scan & Input Pagi",
+    "sore": "Laporan Penggunaan Sore",
+    "bos": "Laporan Eksekutif Ke Bos",
+    "gudang": "Dashboard & Stok Gudang",
+    "teknisi": "Histori Sheet Teknisi",
+    "pengaturan": "Pengaturan Tim & Material"
 }
 
 pilihan_menu = st.sidebar.radio(
     "PILIH HALAMAN APLIKASI:", 
     options=list(menu_options.keys()),
-    format_func=lambda x: menu_options[x]
+    format_func=lambda x: menu_options[x],
+    label_visibility="collapsed"
 )
+
+# --- DYNAMIC TOP NAVBAR HEADER (Sesuai gambar referensi) ---
+hari_mapping = {"Monday": "Senin", "Tuesday": "Selasa", "Wednesday": "Rabu", "Thursday": "Kamis", "Friday": "Jumat", "Saturday": "Sabtu", "Sunday": "Minggu"}
+bulan_mapping = {"January": "Januari", "February": "Februari", "March": "Maret", "April": "April", "May": "Mei", "June": "Juni", "July": "Juli", "August": "Agustus", "September": "September", "October": "Oktober", "November": "November", "December": "Desember"}
+
+now = datetime.now()
+hari_indo = hari_mapping.get(now.strftime("%A"), now.strftime("%A"))
+bulan_indo = bulan_mapping.get(now.strftime("%B"), now.strftime("%B"))
+tgl_format = f"{hari_indo}, {now.strftime('%d')} {bulan_indo} {now.strftime('%Y')}"
+
+st.markdown(f"""
+<div style="display: flex; justify-content: space-between; align-items: center; padding: 15px 25px; background-color: white; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.02); margin-bottom: 25px;">
+    <div style="font-size: 20px; font-weight: 600; color: #1e293b; display: flex; align-items: center; gap: 10px;">
+        📂 {menu_options[pilihan_menu]}
+    </div>
+    <div style="display: flex; gap: 25px; font-size: 13px; color: #64748b; font-weight: 500;">
+        <div>📅 {tgl_format}</div>
+        <div>👤 User: Admin</div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
 # ==================== MENU 1: SCAN & INPUT PAGI ====================
 if pilihan_menu == "pagi":
-    st.subheader("✍️ Pendataan Pengeluaran Material Harian (Pagi/Siang)")
-    
     if st.session_state.pesan_sukses: st.success(st.session_state.pesan_sukses); st.session_state.pesan_sukses = ""
     if st.session_state.pesan_error: st.error(st.session_state.pesan_error); st.session_state.pesan_error = ""
+
+    with st.container(border=True):
+        st.markdown("<h4 style='margin-top:0; margin-bottom: 20px; color: #334155; font-weight:600;'>║║ Input Barang Masuk Pagi</h4>", unsafe_allow_html=True)
         
-    col_kabel, col_sn = st.columns(2)
-    with col_kabel:
-        st.markdown("#### 🧵 1. Input Pengeluaran Kabel Precon")
-        with st.container(border=True):
-            tek_kabel = st.selectbox("Pilih Tim / Teknisi (Kabel):", DAFTAR_TEKNISI, key="tek_kabel")
-            pilihan_kabel = st.selectbox("Pilih Jenis / Ukuran Kabel Precon:", DAFTAR_KABEL_OTOMATIS, key="pilihan_kabel")
-            jumlah_roll = st.number_input("Jumlah Pengeluaran (Roll):", min_value=1, value=1, step=1, key="jumlah_roll")
-            wo_kabel = st.text_input("Nomor WO / Keterangan Awal (Kabel):", key="wo_kabel")
+        # Grid 2 Kolom Sesuai Gambar Berkas Contoh
+        col1, col2 = st.columns(2)
+        with col1:
+            st.text_input("Serial Number (SN)", placeholder="Tembak barcode SN ke sini...", key="scan_sn_key", on_change=proses_scan_sn)
+            st.selectbox("Nama Teknisi", DAFTAR_TEKNISI, key="tek_device")
             
-            if st.button("➕ Simpan Kabel ke Log", use_container_width=True, type="primary"):
-                for i in range(int(jumlah_roll)):
-                    label_roll = f"Roll {i+1}"
-                    ket_final = f"{wo_kabel} ({label_roll})" if wo_kabel else label_roll
-                    
-                    new_row = {
-                        'Waktu Scan': datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 'Nama Teknisi': tek_kabel, 
-                        'Serial Number (SN)': "-", 'Nama Barang': "Kabel Precon", 'Kabel Precon': pilihan_kabel, 
-                        'No WO / Keterangan': ket_final, 'Status Pemasangan Sore': "Belum Dilaporkan ⏳", 
-                        'Keterangan Tambahan Sore': "-", 'Stok Dipotong': "Belum"
-                    }
-                    st.session_state.log_scan_harian = pd.concat([st.session_state.log_scan_harian, pd.DataFrame([new_row])], ignore_index=True)
-                
-                simpan_file_ke_github("log_harian.csv", st.session_state.log_scan_harian, "Auto-Update Input Kabel")
-                st.toast(f"Berhasil menambahkan {jumlah_roll} Baris Kabel!", icon="🧵")
-                st.rerun()
+        with col2:
+            st.selectbox("Jenis Barang", ["-- Pilih Jenis (Otomatis Mendeteksi SN) --", "ONT Premium", "STB HD Box", "Access Point Outdoor", "Kabel Precon"], key="jenis_barang_dummy")
+            st.number_input("Jumlah Unit", min_value=1, value=1, step=1, key="jumlah_unit_dummy")
+            
+        st.text_area("Keterangan", placeholder="Catatan tambahan atau nomor WO...", key="wo_device", height=80)
+        
+        if st.button("➕ Tambah Item", type="primary"):
+            if st.session_state.scan_sn_key:
+                proses_scan_sn()
+            else:
+                st.toast("Silakan isi atau scan SN terlebih dahulu!", icon="⚠️")
 
-    with col_sn:
-        st.markdown("#### 📟 2. Scan Otomatis SN Device (ONT / STB)")
-        with st.container(border=True):
-            st.selectbox("Pilih Tim / Teknisi (Device):", DAFTAR_TEKNISI, key="tek_device")
-            st.text_input("Nomor WO / Keterangan (Device):", key="wo_device")
-            st.markdown("**KOTAK SCANNER SN:**")
-            col_box_input, col_icon_status = st.columns([5, 1])
-            with col_box_input:
-                st.text_input("KOTAK SCANNER SN", placeholder="Tembak barcode SN ke sini...", key="scan_sn_key", on_change=proses_scan_sn, label_visibility="collapsed")
-            with col_icon_status:
-                if st.session_state.status_scan_terakhir == "sukses": st.markdown("<p style='font-size:26px;margin:0;text-align:center;'>✅</p>", unsafe_allow_html=True)
-                elif st.session_state.status_scan_terakhir == "double": st.markdown("<p style='font-size:26px;margin:0;text-align:center;'>❌</p>", unsafe_allow_html=True)
-                else: st.markdown("<p style='font-size:26px;margin:0;text-align:center;color:gray;'>-</p>", unsafe_allow_html=True)
+    # --- INPUT KHUSUS KABEL PRECON ---
+    with st.container(border=True):
+        st.markdown("<h4 style='margin-top:0; margin-bottom: 15px; color: #334155; font-weight:600;'>🧵 Input Log Pengeluaran Kabel Precon</h4>", unsafe_allow_html=True)
+        col_c1, col_c2 = st.columns(2)
+        with col_c1:
+            tek_kabel = st.selectbox("Pilih Teknisi (Kabel):", DAFTAR_TEKNISI, key="tek_kabel")
+            pilihan_kabel = st.selectbox("Ukuran Kabel Precon:", DAFTAR_KABEL_OTOMATIS, key="pilihan_kabel")
+        with col_c2:
+            jumlah_roll = st.number_input("Jumlah Roll Keluar:", min_value=1, value=1, step=1, key="jumlah_roll")
+            wo_kabel = st.text_input("Nomor WO (Kabel):", key="wo_kabel")
+            
+        if st.button("🧵 Simpan Material Kabel", use_container_width=True):
+            for i in range(int(jumlah_roll)):
+                label_roll = f"Roll {i+1}"
+                ket_final = f"{wo_kabel} ({label_roll})" if wo_kabel else label_roll
+                new_row = {
+                    'Waktu Scan': datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 'Nama Teknisi': tek_kabel, 
+                    'Serial Number (SN)': "-", 'Nama Barang': "Kabel Precon", 'Kabel Precon': pilihan_kabel, 
+                    'No WO / Keterangan': ket_final, 'Status Pemasangan Sore': "Belum Dilaporkan ⏳", 
+                    'Keterangan Tambahan Sore': "-", 'Stok Dipotong': "Belum"
+                }
+                st.session_state.log_scan_harian = pd.concat([st.session_state.log_scan_harian, pd.DataFrame([new_row])], ignore_index=True)
+            simpan_file_ke_github("log_harian.csv", st.session_state.log_scan_harian, "Auto-Update Input Kabel")
+            st.toast("Kabel sukses dimasukkan!", icon="🧵")
+            st.rerun()
 
-    st.markdown("---")
-    st.markdown("#### 📋 Tabel Pengeluaran Barang (Hari Ini)")
-    
+    st.markdown("#### 📋 Daftar Input Pagi Hari Ini")
     with st.container(border=True):
         if not df_hari_ini.empty:
             tabel_edit_pagi = st.data_editor(df_hari_ini, num_rows="dynamic", use_container_width=True, key="gudang_editor_pagi")
-            
             if not tabel_edit_pagi.equals(df_hari_ini):
                 df_sisanya = st.session_state.log_scan_harian[~st.session_state.log_scan_harian['Waktu Scan'].astype(str).str.contains(hari_ini_str)]
                 st.session_state.log_scan_harian = pd.concat([df_sisanya, tabel_edit_pagi], ignore_index=True)
                 simpan_file_ke_github("log_harian.csv", st.session_state.log_scan_harian, "Koreksi Manual Pagi")
-                st.toast("Perubahan data tersimpan! 🔄")
                 st.rerun()
         else:
-            st.info("Belum ada data barang keluar pagi ini.")
+            st.info("Belum ada rincian data barang keluar hari ini.")
 
 # ==================== MENU 2: LAPORAN SORE ====================
 elif pilihan_menu == "sore":
-    st.subheader("📝 Laporan Hasil Kerja Lapangan Sore Hari (Hari Ini)")
-    
     with st.container(border=True):
         if not df_hari_ini.empty:
             tabel_edit_sore = st.data_editor(
@@ -319,8 +407,8 @@ elif pilihan_menu == "sore":
                 simpan_file_ke_github("log_harian.csv", st.session_state.log_scan_harian, "Koreksi Status Sore")
                 st.rerun()
             
-            st.markdown("### 🔄 1. Eksekusi Potong Stok Gudang")
-            if st.button("🔄 Proses Sinkronisasi & Potong Stok Otomatis", type="secondary", use_container_width=True):
+            st.markdown("### 🔄 Potong Stok Otomatis")
+            if st.button("🔄 Eksekusi Potong Sisa Stok Gudang", type="primary", use_container_width=True):
                 jumlah_potong = 0
                 for idx, row in st.session_state.log_scan_harian.iterrows():
                     if row['Waktu Scan'].startswith(hari_ini_str) and row['Status Pemasangan Sore'] == "Sudah Terinstal ✅" and row['Stok Dipotong'] == "Belum":
@@ -329,179 +417,73 @@ elif pilihan_menu == "sore":
                                 kondisi = st.session_state.df_device.iloc[:, 0].astype(str).str.lower().str.contains(row['Nama Barang'].lower(), na=False)
                                 if kondisi.any():
                                     idx_gudang = st.session_state.df_device[kondisi].index[0]
-                                    col_target = st.session_state.df_device.columns[1]
-                                    st.session_state.df_device.at[idx_gudang, col_target] = max(0, st.session_state.df_device.at[idx_gudang, col_target] - 1)
+                                    st.session_state.df_device.at[idx_gudang, st.session_state.df_device.columns[1]] = max(0, st.session_state.df_device.at[idx_gudang, st.session_state.df_device.columns[1]] - 1)
                                     st.session_state.log_scan_harian.at[idx, 'Stok Dipotong'] = "Berhasil Terpotong 📉"
                                     jumlah_potong += 1
                         elif row['Kabel Precon'] != "-":
                             if st.session_state.df_precon is not None:
-                                kolom_desk_p = st.session_state.df_precon.columns[0]
-                                kondisi = st.session_state.df_precon[kolom_desk_p].astype(str).str.strip() == row['Kabel Precon'].strip()
+                                kondisi = st.session_state.df_precon.iloc[:, 0].astype(str).str.strip() == row['Kabel Precon'].strip()
                                 if kondisi.any():
                                     idx_gudang = st.session_state.df_precon[kondisi].index[0]
-                                    col_target = st.session_state.df_precon.columns[1]
-                                    st.session_state.df_precon.at[idx_gudang, col_target] = max(0, st.session_state.df_precon.at[idx_gudang, col_target] - 1)
+                                    st.session_state.df_precon.at[idx_gudang, st.session_state.df_precon.columns[1]] = max(0, st.session_state.df_precon.at[idx_gudang, st.session_state.df_precon.columns[1]] - 1)
                                     st.session_state.log_scan_harian.at[idx, 'Stok Dipotong'] = "Berhasil Terpotong 📉"
                                     jumlah_potong += 1
                                     
                 simpan_file_ke_github("log_harian.csv", st.session_state.log_scan_harian, "Auto-Update Log Sore")
                 simpan_file_ke_github("database_device.csv", st.session_state.df_device, "Auto-Potong Stok Device")
                 simpan_file_ke_github("database_precon.csv", st.session_state.df_precon, "Auto-Potong Stok Precon")
-                
-                if jumlah_potong > 0:
-                    st.success(f"🔥 Berhasil memotong {jumlah_potong} item material dari cloud database gudang!")
-                    st.balloons()
-                    st.rerun()
-                else:
-                    st.success("✅ Perubahan laporan sore berhasil disinkronkan!")
-                    
-            st.markdown("### 📥 2. Unduh Rekap Sore (.xlsx)")
-            buffer_sore = io.BytesIO()
-            with pd.ExcelWriter(buffer_sore, engine='openpyxl') as writer:
-                df_hari_ini.to_excel(writer, index=False, sheet_name='Rekap Sore Hari Ini')
-            st.download_button(
-                label="📥 Download Berkas Rekap Sore Format Excel Asli (.xlsx)", 
-                data=buffer_sore.getvalue(), 
-                file_name=f"REKAP_SORE_{hari_ini_str}.xlsx", 
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
-                use_container_width=True
-            )
+                st.success(f"🔥 Selesai memotong {jumlah_potong} item dari cloud database!")
+                st.rerun()
         else:
-            st.warning("Data log hari ini masih kosong.")
+            st.warning("Data hari ini masih kosong.")
 
 # ==================== MENU 3: LAPORAN EKSEKUTIF KE BOS ====================
 elif pilihan_menu == "bos":
-    st.subheader("📊 Pusat Laporan & Analisa Distribusi Material")
     with st.container(border=True):
-        periode = st.selectbox("Pilih Periode Laporan:", ["Hari Ini (Daily)", "7 Hari Terakhir (Weekly)", "30 Hari Terakhir (Monthly)", "Semua Riwayat (All Time)"])
-        
-        df_history = st.session_state.log_scan_harian.copy()
-        df_history['Waktu Scan DT'] = pd.to_datetime(df_history['Waktu Scan'], errors='coerce')
-        sekarang = datetime.now()
+        periode = st.selectbox("Filter Periode Analisis:", ["Hari Ini (Daily)", "7 Hari Terakhir", "Semua Riwayat"])
+        df_filtered = st.session_state.log_scan_harian.copy()
         
         if periode == "Hari Ini (Daily)":
-            df_filtered = df_history[df_history['Waktu Scan'].astype(str).str.contains(hari_ini_str)]
-        elif periode == "7 Hari Terakhir (Weekly)":
-            tgl_batas = sekarang - timedelta(days=7)
-            df_filtered = df_history[df_history['Waktu Scan DT'] >= tgl_batas]
-        elif periode == "30 Hari Terakhir (Monthly)":
-            tgl_batas = sekarang - timedelta(days=30)
-            df_filtered = df_history[df_history['Waktu Scan DT'] >= tgl_batas]
-        else:
-            df_filtered = df_history
-
+            df_filtered = df_filtered[df_filtered['Waktu Scan'].astype(str).str.contains(hari_ini_str)]
+            
         if not df_filtered.empty:
-            total_out = len(df_filtered)
-            total_installed = len(df_filtered[df_filtered['Status Pemasangan Sore'] == "Sudah Terinstal ✅"])
-            total_retur = len(df_filtered[df_filtered['Status Pemasangan Sore'] == "Belum Terinstal / Retur ❌"])
-            total_pending = len(df_filtered[df_filtered['Status Pemasangan Sore'] == "Belum Dilaporkan ⏳"])
-            success_rate = (total_installed / total_out * 100) if total_out > 0 else 0
-            
-            m1, m2, m3, m4, m5 = st.columns(5)
-            m1.metric("📦 Total Material Keluar", f"{total_out} Item")
-            m2.metric("✅ Sukses Terpasang", f"{total_installed} Item")
-            m3.metric("❌ Retur / Gagal", f"{total_retur} Item")
-            m4.metric("⏳ Pending / Belum Lapor", f"{total_pending} Item")
-            m5.metric("📈 Rasio Keberhasilan", f"{success_rate:.1f}%")
-            
+            t1, t2, t3 = st.columns(3)
+            t1.metric("📦 Total Material Keluar", f"{len(df_filtered)} Item")
+            t2.metric("✅ Sukses Terpasang", f"{len(df_filtered[df_filtered['Status Pemasangan Sore'] == 'Sudah Terinstal ✅'])} Item")
+            t3.metric("❌ Gagal / Retur", f"{len(df_filtered[df_filtered['Status Pemasangan Sore'] == 'Belum Terinstal / Retur ❌'])} Item")
             st.markdown("---")
-            g1, g2 = st.columns(2)
-            with g1:
-                st.markdown("**📈 Produktivitas Tim Teknisi (Instalasi Sukses):**")
-                df_sukses = df_filtered[df_filtered['Status Pemasangan Sore'] == "Sudah Terinstal ✅"]
-                if not df_sukses.empty: 
-                    df_chart1 = df_sukses['Nama Teknisi'].value_counts().reset_index()
-                    df_chart1.columns = ['Nama Teknisi', 'Jumlah']
-                    st.bar_chart(df_chart1, x='Nama Teknisi', y='Jumlah')
-                else: 
-                    st.info("💡 Belum ada data instalasi sukses untuk periode ini.")
-            with g2:
-                st.markdown("**📦 Jenis Material Paling Banyak Keluar:**")
-                df_calc = df_filtered.copy()
-                df_calc['Item Laporan'] = df_calc.apply(lambda r: r['Kabel Precon'] if str(r['Kabel Precon']) != "-" else r['Nama Barang'], axis=1)
-                df_chart2 = df_calc['Item Laporan'].value_counts().reset_index()
-                df_chart2.columns = ['Nama Material', 'Jumlah']
-                st.bar_chart(df_chart2, x='Nama Material', y='Jumlah')
-            
-            st.markdown("---")
-            st.markdown(f"#### 📋 Tabel Rincian Data Logistik - Periode {periode}")
-            tabel_tampil = df_filtered.drop(columns=['Waktu Scan DT'], errors='ignore')
-            st.dataframe(tabel_tampil, use_container_width=True)
-            
-            # --- PROSES EXPORT ---
-            buffer_bos = io.BytesIO()
-            with pd.ExcelWriter(buffer_bos, engine='openpyxl') as writer:
-                tabel_tampil.to_excel(writer, index=False, sheet_name='Laporan Ke Bos')
-                
-            st.download_button(
-                label=f"📥 Download Berkas Laporan Eksekutif ({periode}) Format Excel Asli (.xlsx)",
-                data=buffer_bos.getvalue(),
-                file_name=f"LAPORAN_BOS_{periode.replace(' ', '_')}_{hari_ini_str}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
-            )
+            st.dataframe(df_filtered, use_container_width=True)
         else:
-            st.warning("Tidak ditemukan data logistik pada periode ini.")
+            st.info("Tidak ditemukan data logistik pada periode terpilih.")
 
 # ==================== MENU 4: DASHBOARD UTAMA ====================
 elif pilihan_menu == "gudang":
-    st.subheader("📉 Dashboard Utama & Kontrol Sisa Stok")
-    
     with st.container(border=True):
-        if st.button("🔄 Sinkronkan & Timpa Stok Awal dari Master SN", type="primary", use_container_width=True):
-            if not df_master.empty and 'Nama_Barang' in df_master.columns:
-                st.session_state.df_device = df_device_default
-                simpan_file_ke_github("database_device.csv", df_device_default, "Force Sync Reset dari Master SN")
-                st.success("🔥 SUKSES! Stok awal diatur ulang berdasarkan Master SN!")
-                st.rerun()
-
-        t1, t2 = st.tabs(["📟 Stock Device (Hitungan Master SN)", "🧵 Stock PRECON"])
-        with t1:
-            if st.session_state.df_device is not None: st.dataframe(st.session_state.df_device, use_container_width=True)
-        with t2:
-            if st.session_state.df_precon is not None: st.dataframe(st.session_state.df_precon, use_container_width=True)
+        st.markdown("### 📉 Sisa Stok Cloud Gudang Real-Time")
+        if st.button("🔄 Paksa Sinkronisasi Ulang dari File Master SN", type="primary", use_container_width=True):
+            st.session_state.df_device = df_device_default
+            simpan_file_ke_github("database_device.csv", df_device_default, "Reset Force Sync Master")
+            st.rerun()
+            
+        tab1, tab2 = st.tabs(["📟 Validasi Stok Device", "🧵 Validasi Stok Kabel Precon"])
+        with tab1:
+            st.dataframe(st.session_state.df_device, use_container_width=True)
+        with tab2:
+            st.dataframe(st.session_state.df_precon, use_container_width=True)
 
 # ==================== MENU 5: HISTORI SHEET TEKNISI ====================
 elif pilihan_menu == "teknisi":
-    st.subheader("👨‍🔧 Histori Sheet Penggunaan Teknisi")
     with st.container(border=True):
-        pilihan_tim = st.selectbox("Pilih Nama Tim / Teknisi:", DAFTAR_TEKNISI)
-        
+        pilihan_tim = st.selectbox("Pilih Teknisi / Tim Lapangan:", DAFTAR_TEKNISI)
         if not st.session_state.log_scan_harian.empty:
-            df_filtered = st.session_state.log_scan_harian[st.session_state.log_scan_harian['Nama Teknisi'] == pilihan_tim]
-            if not df_filtered.empty: st.dataframe(df_filtered, use_container_width=True)
-            else: st.info(f"Belum ada riwayat untuk tim **{pilihan_tim}**.")
-        else:
-            st.info("Belum ada data log harian.")
+            df_fil = st.session_state.log_scan_harian[st.session_state.log_scan_harian['Nama Teknisi'] == pilihan_tim]
+            st.dataframe(df_fil, use_container_width=True)
 
 # ==================== MENU 6: PENGATURAN TIM & MATERIAL ====================
 elif pilihan_menu == "pengaturan":
-    st.subheader("⚙️ Control Panel - Pengaturan Tim & Material")
-    
     with st.container(border=True):
-        tab_tim, tab_kabel = st.tabs(["👨‍🔧 Kelola Daftar Tim / Teknisi", "🧵 Kelola Ukuran & Stok Awal Kabel"])
-        
-        with tab_tim:
-            st.markdown("#### 📋 Tambah atau Hapus Tim Teknisi")
-            nama_baru = st.text_input("Ketik Nama Tim Baru:", key="input_nama_baru").strip().upper()
-            if st.button("➕ Daftarkan Tim Baru", use_container_width=True):
-                if nama_baru and nama_baru not in st.session_state.df_teknisi['Nama Teknisi'].values:
-                    new_tk = pd.DataFrame([{'Nama Teknisi': nama_baru}])
-                    st.session_state.df_teknisi = pd.concat([st.session_state.df_teknisi, new_tk], ignore_index=True)
-                    simpan_file_ke_github("daftar_teknisi.csv", st.session_state.df_teknisi, f"Tambah {nama_baru}")
-                    st.success(f"Berhasil menambahkan tim {nama_baru}!")
-                    st.rerun()
-            
-            tabel_tim_edit = st.data_editor(st.session_state.df_teknisi, num_rows="dynamic", use_container_width=True)
-            if not tabel_tim_edit.equals(st.session_state.df_teknisi):
-                st.session_state.df_teknisi = tabel_tim_edit
-                simpan_file_ke_github("daftar_teknisi.csv", st.session_state.df_teknisi, "Update Teknisi")
-                st.rerun()
-
-        with tab_kabel:
-            st.markdown("#### 📊 Atur Ulang Stok & Jenis Kabel Precon Gudang")
-            tabel_kabel_edit = st.data_editor(st.session_state.df_precon, num_rows="dynamic", use_container_width=True)
-            if st.button("💾 Simpan Perubahan Data Kabel", type="primary", use_container_width=True):
-                st.session_state.df_precon = tabel_kabel_edit
-                simpan_file_ke_github("database_precon.csv", st.session_state.df_precon, "Update Kabel")
-                st.success("🔥 Data Berhasil Diperbarui!")
+        t_edit = st.data_editor(st.session_state.df_teknisi, num_rows="dynamic", use_container_width=True)
+        if not t_edit.equals(st.session_state.df_teknisi):
+            st.session_state.df_teknisi = t_edit
+            simpan_file_ke_github("daftar_teknisi.csv", t_edit, "Update List Teknisi")
+            st.rerun()
