@@ -190,15 +190,25 @@ def proses_scan_sn():
         st.session_state.status_scan_terakhir = "sukses"
         st.session_state.scan_sn_key = ""
 
-# --- SIDEBAR MENU ---
+# --- MAP NAVIGATION MENU (ANTI BUG EMOJI) ---
 st.sidebar.markdown("### 📊 NAVIGATION MENU")
-menu = st.sidebar.radio(
+menu_options = {
+    "pagi": "✍️ Scan & Input Pagi (Pengeluaran)",
+    "sore": "📝 Laporan Penggunaan Sore (Update Status)",
+    "bos": "📊 Laporan Eksekutif Ke Bos",
+    "gudang": "📉 Dashboard & Stok Gudang",
+    "teknisi": "👨‍🔧 Histori Sheet Teknisi",
+    "pengaturan": "⚙️ Pengaturan Tim & Material"
+}
+
+pilihan_menu = st.sidebar.radio(
     "PILIH HALAMAN APLIKASI:", 
-    ["✍️ Scan & Input Pagi (Pengeluaran)", "📝 Laporan Penggunaan Sore (Update Status)", "📊 Laporan Eksekutif Ke Bos", "📉 Dashboard & Stok Gudang", "👨‍🔧 Histori Sheet Teknisi", "⚙️ Pengaturan Tim & Material"]
+    options=list(menu_options.keys()),
+    format_func=lambda x: menu_options[x]
 )
 
 # ==================== MENU 1: SCAN & INPUT PAGI ====================
-if menu == "✍️ Scan & Input Pagi (Pengeluaran)":
+if pilihan_menu == "pagi":
     st.subheader("✍️ Pendataan Pengeluaran Material Harian (Pagi/Siang)")
     
     if st.session_state.pesan_sukses: st.success(st.session_state.pesan_sukses); st.session_state.pesan_sukses = ""
@@ -260,7 +270,7 @@ if menu == "✍️ Scan & Input Pagi (Pengeluaran)":
         st.info("Belum ada data barang keluar pagi ini.")
 
 # ==================== MENU 2: LAPORAN SORE ====================
-elif menu == "📝 Laporan Penggunaan Sore (Update Status)":
+elif pilihan_menu == "sore":
     st.subheader("📝 Laporan Hasil Kerja Lapangan Sore Hari (Hari Ini)")
     
     if not df_hari_ini.empty:
@@ -335,7 +345,7 @@ elif menu == "📝 Laporan Penggunaan Sore (Update Status)":
         st.warning("Data log hari ini masih kosong.")
 
 # ==================== MENU 3: LAPORAN EKSEKUTIF KE BOS ====================
-elif menu == "📊 Laporan Eksekutif Ke Bos":
+elif pilihan_menu == "bos":
     st.subheader("📊 Pusat Laporan & Analisa Distribusi Material")
     periode = st.selectbox("Pilih Periode Laporan:", ["Hari Ini (Daily)", "7 Hari Terakhir (Weekly)", "30 Hari Terakhir (Monthly)", "Semua Riwayat (All Time)"])
     
@@ -372,4 +382,96 @@ elif menu == "📊 Laporan Eksekutif Ke Bos":
         g1, g2 = st.columns(2)
         with g1:
             st.markdown("**📈 Produktivitas Tim Teknisi (Instalasi Sukses):**")
-            df_sukses = df_filtered
+            df_sukses = df_filtered[df_filtered['Status Pemasangan Sore'] == "Sudah Terinstal ✅"]
+            if not df_sukses.empty: 
+                df_chart1 = df_sukses['Nama Teknisi'].value_counts().reset_index()
+                df_chart1.columns = ['Nama Teknisi', 'Jumlah']
+                st.bar_chart(df_chart1, x='Nama Teknisi', y='Jumlah')
+            else: 
+                st.info("💡 Belum ada data instalasi sukses untuk periode ini.")
+        with g2:
+            st.markdown("**📦 Jenis Material Paling Banyak Keluar:**")
+            df_calc = df_filtered.copy()
+            df_calc['Item Laporan'] = df_calc.apply(lambda r: r['Kabel Precon'] if str(r['Kabel Precon']) != "-" else r['Nama Barang'], axis=1)
+            df_chart2 = df_calc['Item Laporan'].value_counts().reset_index()
+            df_chart2.columns = ['Nama Material', 'Jumlah']
+            st.bar_chart(df_chart2, x='Nama Material', y='Jumlah')
+            
+        st.markdown("---")
+        st.markdown(f"#### 📋 Tabel Rincian Data Logistik - Periode {periode}")
+        tabel_tampil = df_filtered.drop(columns=['Waktu Scan DT'], errors='ignore')
+        st.dataframe(tabel_tampil, use_container_width=True)
+        
+        # --- PROSES EXPORT BIAR JADI EXCEL ASLI .XLSX ---
+        buffer_bos = io.BytesIO()
+        with pd.ExcelWriter(buffer_bos, engine='openpyxl') as writer:
+            tabel_tampil.to_excel(writer, index=False, sheet_name='Laporan Ke Bos')
+            
+        st.download_button(
+            label=f"📥 Download Berkas Laporan Eksekutif ({periode}) Format Excel Asli (.xlsx)",
+            data=buffer_bos.getvalue(),
+            file_name=f"LAPORAN_BOS_{periode.replace(' ', '_')}_{hari_ini_str}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
+    else:
+        st.warning("Tidak ditemukan data logistik pada periode ini.")
+
+# ==================== MENU 4: DASHBOARD UTAMA ====================
+elif pilihan_menu == "gudang":
+    st.subheader("📉 Dashboard Utama & Kontrol Sisa Stok")
+    
+    if st.button("🔄 Sinkronkan & Timpa Stok Awal dari Master SN", type="primary", use_container_width=True):
+        if not df_master.empty and 'Nama_Barang' in df_master.columns:
+            st.session_state.df_device = df_device_default
+            simpan_file_ke_github("database_device.csv", df_device_default, "Force Sync Reset dari Master SN")
+            st.success("🔥 SUKSES! Stok awal diatur ulang berdasarkan Master SN!")
+            st.rerun()
+
+    t1, t2 = st.tabs(["📟 Stock Device (Hitungan Master SN)", "🧵 Stock PRECON"])
+    with t1:
+        if st.session_state.df_device is not None: st.dataframe(st.session_state.df_device, use_container_width=True)
+    with t2:
+        if st.session_state.df_precon is not None: st.dataframe(st.session_state.df_precon, use_container_width=True)
+
+# ==================== MENU 5: HISTORI SHEET TEKNISI ====================
+elif pilihan_menu == "teknisi":
+    st.subheader("👨‍🔧 Histori Sheet Penggunaan Teknisi")
+    pilihan_tim = st.selectbox("Pilih Nama Tim / Teknisi:", DAFTAR_TEKNISI)
+    
+    if not st.session_state.log_scan_harian.empty:
+        df_filtered = st.session_state.log_scan_harian[st.session_state.log_scan_harian['Nama Teknisi'] == pilihan_tim]
+        if not df_filtered.empty: st.dataframe(df_filtered, use_container_width=True)
+        else: st.info(f"Belum ada riwayat untuk tim **{pilihan_tim}**.")
+    else:
+        st.info("Belum ada data log harian.")
+
+# ==================== MENU 6: PENGATURAN TIM & MATERIAL ====================
+elif pilihan_menu == "pengaturan":
+    st.subheader("⚙️ Control Panel - Pengaturan Tim & Material")
+    tab_tim, tab_kabel = st.tabs(["👨‍🔧 Kelola Daftar Tim / Teknisi", "🧵 Kelola Ukuran & Stok Awal Kabel"])
+    
+    with tab_tim:
+        st.markdown("#### 📋 Tambah atau Hapus Tim Teknisi")
+        nama_baru = st.text_input("Ketik Nama Tim Baru:", key="input_nama_baru").strip().upper()
+        if st.button("➕ Daftarkan Tim Baru", use_container_width=True):
+            if nama_baru and nama_baru not in st.session_state.df_teknisi['Nama Teknisi'].values:
+                new_tk = pd.DataFrame([{'Nama Teknisi': nama_baru}])
+                st.session_state.df_teknisi = pd.concat([st.session_state.df_teknisi, new_tk], ignore_index=True)
+                simpan_file_ke_github("daftar_teknisi.csv", st.session_state.df_teknisi, f"Tambah {nama_baru}")
+                st.success(f"Berhasil menambahkan tim {nama_baru}!")
+                st.rerun()
+        
+        tabel_tim_edit = st.data_editor(st.session_state.df_teknisi, num_rows="dynamic", use_container_width=True)
+        if not tabel_tim_edit.equals(st.session_state.df_teknisi):
+            st.session_state.df_teknisi = tabel_tim_edit
+            simpan_file_ke_github("daftar_teknisi.csv", st.session_state.df_teknisi, "Update Teknisi")
+            st.rerun()
+
+    with tab_kabel:
+        st.markdown("#### 📊 Atur Ulang Stok & Jenis Kabel Precon Gudang")
+        tabel_kabel_edit = st.data_editor(st.session_state.df_precon, num_rows="dynamic", use_container_width=True)
+        if st.button("💾 Simpan Perubahan Data Kabel", type="primary", use_container_width=True):
+            st.session_state.df_precon = tabel_kabel_edit
+            simpan_file_ke_github("database_precon.csv", st.session_state.df_precon, "Update Kabel")
+            st.success("🔥 Data Berhasil Diperbarui!")
