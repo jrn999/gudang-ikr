@@ -269,81 +269,110 @@ if pilihan_menu == "pagi":
     else:
         st.info("Belum ada data barang keluar pagi ini.")
 
-# ==================== MENU 2: LAPORAN SORE ====================
+# ==================== MENU 2: LAPORAN SORE (ADMIN ONLY & FLEKSIBEL TANGGAL) ====================
 elif pilihan_menu == "sore":
-    st.subheader("📝 Laporan Hasil Kerja Lapangan Sore Hari (Hari Ini)")
+    st.subheader("📝 Update Status Instalasi Lapangan (Khusus Admin)")
     
-    if not df_hari_ini.empty:
-        tabel_edit_sore = st.data_editor(
-            df_hari_ini,
-            column_config={
-                "Waktu Scan": st.column_config.TextColumn(disabled=True), "Nama Teknisi": st.column_config.TextColumn(disabled=True),
-                "Serial Number (SN)": st.column_config.TextColumn(disabled=True), "Nama Barang": st.column_config.TextColumn(disabled=True),
-                "Kabel Precon": st.column_config.TextColumn(disabled=True), "No WO / Keterangan": st.column_config.TextColumn(disabled=False),
-                "Stok Dipotong": st.column_config.TextColumn(disabled=True),
-                "Status Pemasangan Sore": st.column_config.SelectboxColumn("Status Pemasangan Sore", options=["Belum Dilaporkan ⏳", "Sudah Terinstal ✅", "Belum Terinstal / Retur ❌"], required=True),
-                "Keterangan Tambahan Sore": st.column_config.TextColumn("Keterangan Tambahan Sore")
-            },
-            use_container_width=True, key="gudang_editor_sore"
+    # --- 1. FITUR KEAMANAN ADMIN ---
+    password_admin = st.text_input("🔑 Masukkan Password Admin untuk membuka akses:", type="password")
+    PASSWORD_BENAR = "admin123" # GANTI password ini sesuai keinginan Anda
+    
+    if password_admin == PASSWORD_BENAR:
+        st.success("✅ Akses Terbuka! Anda sekarang dapat mengubah status pemasangan kapan saja.")
+        
+        # --- 2. FILTER DATA (TIDAK TERBATAS HARI INI) ---
+        # Memberikan pilihan untuk menampilkan data yang masih menggantung atau semua data historis
+        filter_tampil = st.radio(
+            "Pilih Data yang Ditampilkan:", 
+            ["Tampilkan Hanya Status 'Belum Dilaporkan ⏳'", "Tampilkan Semua Riwayat Logistik"],
+            horizontal=True
         )
         
-        if not tabel_edit_sore.equals(df_hari_ini):
-            df_sisanya = st.session_state.log_scan_harian[~st.session_state.log_scan_harian['Waktu Scan'].astype(str).str.contains(hari_ini_str)]
-            st.session_state.log_scan_harian = pd.concat([df_sisanya, tabel_edit_sore], ignore_index=True)
-            simpan_file_ke_github("log_harian.csv", st.session_state.log_scan_harian, "Koreksi Status Sore")
-            st.rerun()
-        
-        st.markdown("### 🔄 1. Eksekusi Potong Stok Gudang")
-        if st.button("🔄 Proses Sinkronisasi & Potong Stok Otomatis", type="secondary", use_container_width=True):
-            jumlah_potong = 0
-            for idx, row in st.session_state.log_scan_harian.iterrows():
-                if row['Waktu Scan'].startswith(hari_ini_str) and row['Status Pemasangan Sore'] == "Sudah Terinstal ✅" and row['Stok Dipotong'] == "Belum":
-                    if row['Serial Number (SN)'] != "-":
-                        if st.session_state.df_device is not None:
-                            kondisi = st.session_state.df_device.iloc[:, 0].astype(str).str.lower().str.contains(row['Nama Barang'].lower(), na=False)
-                            if kondisi.any():
-                                idx_gudang = st.session_state.df_device[kondisi].index[0]
-                                col_target = st.session_state.df_device.columns[1]
-                                st.session_state.df_device.at[idx_gudang, col_target] = max(0, st.session_state.df_device.at[idx_gudang, col_target] - 1)
-                                st.session_state.log_scan_harian.at[idx, 'Stok Dipotong'] = "Berhasil Terpotong 📉"
-                                jumlah_potong += 1
-                    elif row['Kabel Precon'] != "-":
-                        if st.session_state.df_precon is not None:
-                            kolom_desk_p = st.session_state.df_precon.columns[0]
-                            kondisi = st.session_state.df_precon[kolom_desk_p].astype(str).str.strip() == row['Kabel Precon'].strip()
-                            if kondisi.any():
-                                idx_gudang = st.session_state.df_precon[kondisi].index[0]
-                                col_target = st.session_state.df_precon.columns[1]
-                                st.session_state.df_precon.at[idx_gudang, col_target] = max(0, st.session_state.df_precon.at[idx_gudang, col_target] - 1)
-                                st.session_state.log_scan_harian.at[idx, 'Stok Dipotong'] = "Berhasil Terpotong 📉"
-                                jumlah_potong += 1
-                                        
-            simpan_file_ke_github("log_harian.csv", st.session_state.log_scan_harian, "Auto-Update Log Sore")
-            simpan_file_ke_github("database_device.csv", st.session_state.df_device, "Auto-Potong Stok Device")
-            simpan_file_ke_github("database_precon.csv", st.session_state.df_precon, "Auto-Potong Stok Precon")
-            
-            if jumlah_potong > 0:
-                st.success(f"🔥 Berhasil memotong {jumlah_potong} item material dari cloud database gudang!")
-                st.balloons()
-                st.rerun()
-            else:
-                st.success("✅ Perubahan laporan sore berhasil disinkronkan!")
-                
-        # --- DOWNLOAD EXCEL SORE ---
-        st.markdown("### 📥 2. Unduh Rekap Sore (.xlsx)")
-        buffer_sore = io.BytesIO()
-        with pd.ExcelWriter(buffer_sore, engine='openpyxl') as writer:
-            df_hari_ini.to_excel(writer, index=False, sheet_name='Rekap Sore Hari Ini')
-        st.download_button(
-            label="📥 Download Berkas Rekap Sore Format Excel Asli (.xlsx)", 
-            data=buffer_sore.getvalue(), 
-            file_name=f"REKAP_SORE_{hari_ini_str}.xlsx", 
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
-            use_container_width=True
-        )
-    else:
-        st.warning("Data log hari ini masih kosong.")
+        if filter_tampil == "Tampilkan Hanya Status 'Belum Dilaporkan ⏳'":
+            df_target = st.session_state.log_scan_harian[st.session_state.log_scan_harian['Status Pemasangan Sore'] == "Belum Dilaporkan ⏳"]
+        else:
+            df_target = st.session_state.log_scan_harian
 
+        if not df_target.empty:
+            tabel_edit_sore = st.data_editor(
+                df_target,
+                column_config={
+                    "Waktu Scan": st.column_config.TextColumn(disabled=True), 
+                    "Nama Teknisi": st.column_config.TextColumn(disabled=True),
+                    "Serial Number (SN)": st.column_config.TextColumn(disabled=True), 
+                    "Nama Barang": st.column_config.TextColumn(disabled=True),
+                    "Kabel Precon": st.column_config.TextColumn(disabled=True), 
+                    "No WO / Keterangan": st.column_config.TextColumn(disabled=False),
+                    "Stok Dipotong": st.column_config.TextColumn(disabled=True),
+                    "Status Pemasangan Sore": st.column_config.SelectboxColumn("Status Pemasangan Sore", options=["Belum Dilaporkan ⏳", "Sudah Terinstal ✅", "Belum Terinstal / Retur ❌"], required=True),
+                    "Keterangan Tambahan Sore": st.column_config.TextColumn("Keterangan Tambahan Sore")
+                },
+                use_container_width=True, key="gudang_editor_admin"
+            )
+            
+            # --- 3. SIMPAN PERUBAHAN TEPAT DI BARIS YANG DIEDIT ---
+            if not tabel_edit_sore.equals(df_target):
+                # .update() akan memperbarui data master berdasarkan nomor index baris (kapanpun tanggalnya)
+                st.session_state.log_scan_harian.update(tabel_edit_sore)
+                simpan_file_ke_github("log_harian.csv", st.session_state.log_scan_harian, "Admin: Update Status Koreksi")
+                st.rerun()
+            
+            st.markdown("### 🔄 1. Eksekusi Potong Stok Gudang")
+            if st.button("🔄 Proses Sinkronisasi & Potong Stok Otomatis", type="secondary", use_container_width=True):
+                jumlah_potong = 0
+                for idx, row in st.session_state.log_scan_harian.iterrows():
+                    # LOGIKA BARU: Menghapus syarat hari ini. Semua yang statusnya "Sudah Terinstal" & belum dipotong akan diproses.
+                    if row['Status Pemasangan Sore'] == "Sudah Terinstal ✅" and row['Stok Dipotong'] == "Belum":
+                        if row['Serial Number (SN)'] != "-":
+                            if st.session_state.df_device is not None:
+                                kondisi = st.session_state.df_device.iloc[:, 0].astype(str).str.lower().str.contains(row['Nama Barang'].lower(), na=False)
+                                if kondisi.any():
+                                    idx_gudang = st.session_state.df_device[kondisi].index[0]
+                                    col_target = st.session_state.df_device.columns[1]
+                                    st.session_state.df_device.at[idx_gudang, col_target] = max(0, st.session_state.df_device.at[idx_gudang, col_target] - 1)
+                                    st.session_state.log_scan_harian.at[idx, 'Stok Dipotong'] = "Berhasil Terpotong 📉"
+                                    jumlah_potong += 1
+                        elif row['Kabel Precon'] != "-":
+                            if st.session_state.df_precon is not None:
+                                kolom_desk_p = st.session_state.df_precon.columns[0]
+                                kondisi = st.session_state.df_precon[kolom_desk_p].astype(str).str.strip() == row['Kabel Precon'].strip()
+                                if kondisi.any():
+                                    idx_gudang = st.session_state.df_precon[kondisi].index[0]
+                                    col_target = st.session_state.df_precon.columns[1]
+                                    st.session_state.df_precon.at[idx_gudang, col_target] = max(0, st.session_state.df_precon.at[idx_gudang, col_target] - 1)
+                                    st.session_state.log_scan_harian.at[idx, 'Stok Dipotong'] = "Berhasil Terpotong 📉"
+                                    jumlah_potong += 1
+                                        
+                simpan_file_ke_github("log_harian.csv", st.session_state.log_scan_harian, "Auto-Update Log Sinkron")
+                simpan_file_ke_github("database_device.csv", st.session_state.df_device, "Auto-Potong Stok Device")
+                simpan_file_ke_github("database_precon.csv", st.session_state.df_precon, "Auto-Potong Stok Precon")
+                
+                if jumlah_potong > 0:
+                    st.success(f"🔥 Berhasil memotong {jumlah_potong} item material historis/baru dari cloud database gudang!")
+                    st.balloons()
+                    st.rerun()
+                else:
+                    st.info("✅ Semua material yang 'Sudah Terinstal' sudah terpotong stoknya.")
+                    
+            # --- DOWNLOAD EXCEL ---
+            st.markdown("### 📥 2. Unduh Data Ditampilkan (.xlsx)")
+            buffer_sore = io.BytesIO()
+            with pd.ExcelWriter(buffer_sore, engine='openpyxl') as writer:
+                df_target.to_excel(writer, index=False, sheet_name='Rekap Status')
+            st.download_button(
+                label="📥 Download Excel File", 
+                data=buffer_sore.getvalue(), 
+                file_name=f"REKAP_STATUS_{datetime.now().strftime('%Y-%m-%d')}.xlsx", 
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
+                use_container_width=True
+            )
+        else:
+            st.info("🎉 Bagus! Semua material sudah memiliki status pemasangan, tidak ada data yang menggantung.")
+    
+    elif password_admin != "":
+        st.error("❌ Password salah! Akses ditolak.")
+    else:
+        st.warning("🔒 Silakan masukkan password admin di atas untuk membuka gembok tabel.")
 # ==================== MENU 3: LAPORAN EKSEKUTIF KE BOS ====================
 elif pilihan_menu == "bos":
     st.subheader("📊 Pusat Laporan & Analisa Distribusi Material")
